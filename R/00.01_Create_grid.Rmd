@@ -1,0 +1,63 @@
+---
+title: "Create 1x1 km grid"
+author: "Dave Fifield, Allison Patterson"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup}
+source(here::here("R/analysis_settings.R"), echo = T)
+the.data <- readRDS(the.data.file)
+study.area <- readRDS(study.area.file)
+```
+
+# Create projection and save
+
+Create an Albers Equal Area projection with params customized to the locations
+of the data and save it.
+
+```{r pick_proj}
+proj <- dftools::pick_aea_projection(the.data$watches, 
+                                     latcol = "LatStart",
+                                     longcol = "LongStart")
+saveRDS(proj, file = proj.file)
+```
+
+
+# Create grid
+
+Create 1x1 km grid covering the study area and fill the cells with value 1.
+```{r create_grid}
+# Study.area is in WGS84
+studyarea.proj <- st_transform(study.area, proj)
+coast <- rnaturalearth::ne_countries(scale = "medium", returnclass = 'sf')
+
+# generate raster covering the study area
+gengrid <- studyarea.proj %>%
+  ext %>% 
+  rast(resolution = 1000, crs = proj) %>%  # create rectangular raster
+  setValues(rep(NA, length(.))) %>%            # set all cells to NA
+  rasterize(studyarea.proj, ., field = 1, background = NA) %>% # set cells to 1
+  writeRaster(filename = file.path(RasterDir, "grid.tif"), overwrite = TRUE)
+
+# Remove the portion of the study area that is land
+land.remove <- mask(gengrid, vect(coast %>% st_transform(proj)))
+
+# Raster with 1's where we want to remove
+land.remove.ones <- ifel(is.na(land.remove),0, 1)
+
+# Subtract - now the areas we want to remove are zeros
+land.remove.zeros <- gengrid - land.remove.ones
+
+# Turn the zeros into NA's
+gengrid <- ifel(land.remove.zeros == 0, NA, 1)
+
+saveRDS(gengrid, file = grid.file)
+writeRaster(gengrid,
+            filename = file.path(RasterDir, "grid.tif"),
+            overwrite = TRUE)
+plot(gengrid, main = "Study area")
+```
+
