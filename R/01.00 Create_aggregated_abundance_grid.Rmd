@@ -1,0 +1,85 @@
+---
+title: "Create aggregated ECSAS density points"
+author: "Dave Fifield"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+Sum detection-corrected abundance by survey segment and convert to density. Then
+rasterize to the generic grid (summing all survey segments that occur in each
+grid cell). Convert the resulting raster to points. This only allows one value
+per grid cell. If I want multiple attributes I'll probably need to convert the
+generic grid to polygon so each one can have multiple attributes.
+
+
+```{r setup}
+source(here::here("R/analysis_settings.R"), echo = T)
+the.data <- readRDS(the.data.file)
+study.area <- readRDS(study.area.file)
+proj <- readRDS(proj.file)
+grid <- readRDS(grid.file)
+```
+
+
+# Get data
+
+```{r get_data}
+studyarea.proj <- study.area %>% st_transform(proj)
+watches <- the.data$watches %>% 
+  assign.season(seasons, datefield = "Date")
+
+# get all seabirds and waterbirds
+sbrds <- filter(the.data$distdata, Seabird == -1) %>% 
+  assign.season(seasons, datefield = "Date") %>% 
+  mutate(month = month(Date))
+
+wtrbrds <- filter(the.data$distdata, Waterbird == -1) %>% 
+  assign.season(seasons, datefield = "Date") %>% 
+  mutate(month = month(Date))
+
+# tbmu <- filter(the.data$distdata, Alpha == "TBMU") %>% 
+#   assign.season(seasons[["TBMU"]], datefield = "Date") %>% 
+#   mutate(month = month(Date))
+```
+
+
+# Aggregate observation by watch and then to gridcell
+
+## All seabirds
+
+```{r aggregate_by_watch_seabirds}
+# Do year-round
+agg.by.grid(sbrds, "All_seabirds", watches, grid, "year_round")
+
+# Now do seasonally
+watches %>%
+  split(.$Season) %>%
+  walk(\(seas.watches) {
+    agg.by.grid(sbrds,
+                "All_seabirds",
+                seas.watches,
+                grid,
+                unique(seas.watches$Season))
+  })
+```
+
+## All waterbirds - includes seabirds, waterfowl, waders, etc.
+
+```{r aggregate_by_watch_waterbirds}
+# Do year-round
+agg.by.grid(wtrbrds, "All_waterbirds", watches, grid, "year_round")
+
+# Now do seasonally
+watches %>%
+  split(.$Season) %>%
+  walk(\(seas.watches) {
+    agg.by.grid(wtrbrds,
+                "All_waterbirds",
+                seas.watches,
+                grid,
+                unique(seas.watches$Season))
+  })
+```

@@ -57,7 +57,7 @@ options(dplyr.summarise.inform = FALSE)
 (grid.file <- file.path(GenDataDir, "grid.rds"))
 
 # Data options
-ECSAS.reextract <- TRUE # Requery the database or use existing saved data.
+ECSAS.reextract <- FALSE # Requery the database or use existing saved data.
 
 spec.grps <- list(
   ATPU = "ATPU",

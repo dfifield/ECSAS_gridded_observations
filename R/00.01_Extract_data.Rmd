@@ -113,6 +113,8 @@ ecsas.ship.dat.sf <- ecsas.ship.dat %>%
     English,
     Count,
     FlySwim,
+    Seabird,
+    Waterbird,
     spec.grp
   ) %>%
   st_as_sf(coords = c("LongStart", "LatStart"), crs = 4326, remove = FALSE) %>%
