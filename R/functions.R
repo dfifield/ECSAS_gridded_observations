@@ -2540,6 +2540,9 @@ do.env.covar <- function(env_covar_spec,
 agg.by.grid <- function(obs, obs.name, watches, grid, time.period){
   message("Aggregating ", obs.name, " for ", time.period)
 
+  tot_colname <- paste0(obs.name, "_sum")
+  n_colname <- paste0("n_", obs.name)
+
   # Join the watch and obs data
   dat <- watches %>%
     left_join(obs, by = "WatchID")
@@ -2548,9 +2551,11 @@ agg.by.grid <- function(obs, obs.name, watches, grid, time.period){
   # Set tot_size and n_obs to 0 for watches with no obs.
   agg.data <- dat %>%
     group_by(WatchID) %>%
-    summarise(tot_size = sum(size), n_obs = n()) %>%
-    mutate(tot_size = case_when(is.na(tot_size)  ~ 0, .default = tot_size),
-           n_obs = case_when(tot_size == 0 ~ 0, .default = n_obs)) %>%
+    # summarise(tot_size = sum(size), n_obs = n()) %>%
+    summarise(!!tot_colname := sum(size),
+              !!n_colname := n()) %>%
+    mutate(!!tot_colname := case_when(is.na(.data[[tot_colname]])  ~ 0, .default = .data[[tot_colname]]),
+           !!n_colname := case_when(.data[[tot_colname]] == 0 ~ 0, .default = .data[[n_colname]])) %>%
     left_join(watches, by = "WatchID")
 
   # change to sf
@@ -2564,18 +2569,18 @@ agg.by.grid <- function(obs, obs.name, watches, grid, time.period){
     vect()
 
   # rasterize tot_size and convert to points
-  nbirds <- rasterize(agg.data.vect, grid, field = "tot_size", fun = sum) %>%
+  nbirds <- rasterize(agg.data.vect, grid, field = tot_colname, fun = sum) %>%
     as.points() %>%
     st_as_sf() %>%
     rename(nbirds = sum)
 
   # rasterize tot_size and convert to points
-  nobs <- rasterize(agg.data.vect, grid, field = "n_obs", fun = sum) %>%
+  nobs <- rasterize(agg.data.vect, grid, field = n_colname, fun = sum) %>%
     as.points() %>%
     st_as_sf() %>%
     rename(nobs = sum)
 
-  # add columns together
+  # combine columns
   agg.data.point <- nbirds %>%
     cbind(nobs %>% st_drop_geometry())
 
@@ -2700,3 +2705,30 @@ do.kde <- function(dat,
           file = file.path("raw-data", paste0(filename, ".RDS")))
   polys
 }
+
+
+combine_seasonal_lists <- function(...) {
+#  Capture all input lists
+
+  lists <- list(...)
+
+#  Define the seasons
+
+  seasons <- c("spring", "summer", "fall", "winter")
+
+#  Combine lists using dplyr
+
+  combined_list <- lapply(seasons, function(season) {
+    lists %>% purrr::map( ~ .x[[season]]) %>% unlist(recursive = FALSE)
+  }) %>% setNames(seasons)
+
+  return(combined_list)
+}
+# Example usage:
+#
+#   list1 <- list(spring = list("flowers", "rain"), summer = list("beach", "sun"), fall = list("leaves", "harvest"), winter = list("snow", "holiday"))
+#
+# list2 <- list(spring = list("breeze", "greenery"), summer = list("vacation", "heat"), fall = list("pumpkin", "chilly"), winter = list("skiing", "fireplace"))
+#
+# combined <- combine_seasonal_lists(list1, list2) print(combined)
+
