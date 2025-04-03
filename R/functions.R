@@ -2531,35 +2531,37 @@ do.env.covar <- function(env_covar_spec,
   final
 }
 
-# Aggregate obserations by watch and then reproject them to grid
-# time.period - name of time period for shapefile
+# Aggregate observations by watch and then reproject them to grid
 # obs - observations
 # obs.name - name for the observation data (e.g., "tbmu")
 # watches - watches
-# grid - grid to projec to
-agg.by.grid <- function(obs, obs.name, watches, grid, time.period){
-  message("Aggregating ", obs.name, " for ", time.period)
+# grid - grid to project to
+# time.period - character string defining name of time.period the data is for.
+#     Typically "year_round, "Spring", "Summer", "Fall", or "Winter". Used to
+#     name the resulting shapefile
+agg.by.grid <- function(obs,
+                        obs.name,
+                        watches,
+                        grid,
+                        time.period,
+                        save.shapefile = FALSE,
+                        save.RDS = FALSE) {
 
-  tot_colname <- paste0(obs.name, "_sum")
-  n_colname <- paste0("n_", obs.name)
+  message("Aggregating ", obs.name, " for ", time.period)
 
   # Join the watch and obs data
   dat <- watches %>%
+    mutate(year = year(Date)) %>%
     left_join(obs, by = "WatchID")
 
   # sum number of birds and number of obs by watch.
   # Set tot_size and n_obs to 0 for watches with no obs.
   agg.data <- dat %>%
     group_by(WatchID) %>%
-    # summarise(tot_size = sum(size), n_obs = n()) %>%
-    summarise(!!tot_colname := sum(size),
-              !!n_colname := n()) %>%
-    mutate(!!tot_colname := case_when(is.na(.data[[tot_colname]])  ~ 0, .default = .data[[tot_colname]]),
-           !!n_colname := case_when(.data[[tot_colname]] == 0 ~ 0, .default = .data[[n_colname]])) %>%
-    left_join(watches, by = "WatchID")
-
-  # change to sf
-  agg.data.vect <- agg.data %>%
+    summarise(year = unique(year), nbirds = sum(size), n_obs = n()) %>%
+    mutate(nbirds = case_when(is.na(nbirds) ~ 0, .default = nbirds),
+           n_obs = case_when(nbirds == 0 ~ 0, .default = n_obs)) %>%
+    left_join(select(watches, WatchID, LatStart, LongStart), by = "WatchID") %>%
     st_as_sf(
       coords = c("LongStart", "LatStart"),
       crs = st_crs("EPSG:4326"),
@@ -2568,39 +2570,118 @@ agg.by.grid <- function(obs, obs.name, watches, grid, time.period){
     st_transform(proj) %>%
     vect()
 
-  # rasterize tot_size and convert to points
-  nbirds <- rasterize(agg.data.vect, grid, field = tot_colname, fun = sum) %>%
+  #
+  years <- rasterize(agg.data, grid, field = "year", fun = encode_years) %>%
     as.points() %>%
     st_as_sf() %>%
-    rename(nbirds = sum)
+    mutate(!!paste0(obs.name, "_yrs") := decode_years(year)) %>%
+    select(-year)
 
-  # rasterize tot_size and convert to points
-  nobs <- rasterize(agg.data.vect, grid, field = n_colname, fun = sum) %>%
+  # rasterize nbird summing all points that fall in each cell and convert
+  # to points
+  nbirds <- rasterize(agg.data, grid, field = "nbirds", fun = sum) %>%
     as.points() %>%
     st_as_sf() %>%
-    rename(nobs = sum)
+    rename(!!paste0(obs.name, "_sum") := sum)
 
-  # combine columns
+  # rasterize summing all points that fall in each cell n_obs and convert to points
+  nobs <- rasterize(agg.data, grid, field = "n_obs", fun = sum) %>%
+    as.points() %>%
+    st_as_sf() %>%
+    rename(!!paste0(obs.name, "_n_obs") := sum)
+
+  # combine and rename columns
   agg.data.point <- nbirds %>%
-    cbind(nobs %>% st_drop_geometry())
+    cbind(nobs %>% st_drop_geometry(),
+          years %>% st_drop_geometry()
+    )
 
   # Save
   filename <- paste("ECSAS", obs.name, "abundance", time.period, sep = "_")
-  st_write(
-    agg.data.point,
-    # dsn = file.path(share_drive, "../products/shapefiles"),
-    dsn = ShapeDir,
-    layer = filename,
-    driver = "ESRI Shapefile",
-    delete_layer = T
-  )
 
-  saveRDS(agg.data.point,
-          file = file.path(GenDataDir, paste0(filename, ".rds")))
+  if (save.shapefile)
+    st_write(
+      agg.data.point,
+      # dsn = file.path(share_drive, "../products/shapefiles"),
+      dsn = ShapeDir,
+      layer = filename,
+      driver = "ESRI Shapefile",
+      delete_layer = T
+    )
+
+  if (save.RDS)
+    saveRDS(agg.data.point,
+            file = file.path(GenDataDir, paste0(filename, ".rds")))
 
   invisible(agg.data.point)
 }
 
+# Encode a vector of years into a single integer by collapsing the 4-digit years
+# NOTE - this assumes all years >=  base and < base + 1000 (since decoding uses)
+# the list of the first 1000 primes.
+#
+# Works by subtracting base from each unique year and adding 1 to get an index into
+# the list of nth prime numbers. Then multiply these prime numbers together
+# to get the answer. To decode simply get the prime factors of the number
+# and use them to figure out what position (ie index) they are in the
+# list of the first 1000 primes. Then un-standardize the index to recover the year.
+# E.g. years = c(2020, 2005)
+#   subtracting 2000 and adding 1 gives c(21, 6) therefore prms is a vector
+#   containing the 21st and 6th primes (ie 73 and 13).
+#   - multiplying these gives ans == 949
+encode_years <- function(years, base = 2000){
+  yrs <- unique(years)
+
+  # standardize to 1 == bsae, 2 == base + 1, etc and use as index to choose
+  # primes
+  prms <- ((na.omit(yrs) - base) + 1) %>%
+    nth_prime() %>%
+    as.numeric()
+
+  # multiply primes together to get a single number. Easy to recover
+  # the primes later since there is only 1 prime factorization of a number
+  # resulting from mutliply all primes.
+  ans <- Reduce(`*`, prms)
+
+  # Just in case something funky has gone on
+  if (is.na(ans) || is.null(ans))
+    return(0)
+
+  ans
+}
+
+
+# Create a vectorized version of gmp::factorize for use in decode_years
+factorize.vec <- Vectorize(gmp::factorize)
+
+# Convert number representing encoded years back to years
+# Uses prime_factorization to get the prime factors of num and then finds
+# their indices in the first 1000 primes then unstandardizes by subracting 1
+# and adding base.
+# E.g. num = 949
+#   prime factors are 73 and 13
+#   these are the 21st and 6th primes
+#   unstandardizing recovers 2020 and 2005
+#
+# For datapoints with many years the value of num was too big for
+# primes::prime_factors() to handle, so I had to switch to using
+# a vectorized verseion of gmp::factorize()
+#
+# Return a character where each element is a comma separated string of years
+decode_years <- function(num, base = 2000){
+
+    zero.indices <- num == 0
+    res <- vector("character", length(num))
+    yrs <- num[!zero.indices] %>%
+      factorize.vec() %>%
+      map(\(x) match(x, primes::primes) - 1 + base) %>%
+      map_chr(\(x) paste(x, collapse = ", "))
+
+    # Just in case
+    res[zero.indices] <- NA
+    res[!zero.indices] <- yrs
+    res
+}
 
 # Do (possibly weighted) kernels
 # dat - sf point object
