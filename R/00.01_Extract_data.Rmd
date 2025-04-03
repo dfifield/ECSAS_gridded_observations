@@ -34,7 +34,7 @@ if (ECSAS.reextract) {
   )  
 
   write_rds(ecsas.ship.dat,
-            file = file.path(GenDataDir, "ECSAS_ship_raw_data.RDS"))
+            file = file.path(GenDataDir, "ECSAS_ship_raw_data.rds"))
 } else {
   ecsas.ship.dat <- read_rds(file.path(GenDataDir, "ECSAS_ship_raw_data.RDS")) 
 }

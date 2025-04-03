@@ -30,105 +30,28 @@ grid <- readRDS(grid.file)
 studyarea.proj <- study.area %>% st_transform(proj)
 watches <- the.data$watches %>% 
   assign.season(seasons, datefield = "Date")
-
-
-# tbmu <- filter(the.data$distdata, Alpha == "TBMU") %>% 
-#   assign.season(seasons[["TBMU"]], datefield = "Date") %>% 
-#   mutate(month = month(Date))
 ```
 
 
-# Aggregate observation by watch and then to gridcell
+# Aggregate 
 
-```{r species_grps}
+Aggregate observations by watch and then to gridcell on a seasonal basis
+combining across all species of interest.
 
-agg_species_group <- function(grp, dat, watches, grid){
-  # get species of interest
-  if (grp == "SBRD")
-    dat.filt <- filter(the.data$distdata, Seabird == -1) 
-  else if (grp == "WBRD")
-    dat.filt <- filter(the.data$distdata, Waterbird == -1) 
-  else
-    dat.filt <- filter(dat, Alpha %in% spec.grps[[grp]])
-  
-  # Do year round
-  yr <- list(agg.by.grid(dat.filt, grp, watches, grid, "year_round")) %>% 
-   setNames("year_round")
-  
-  # Now do seasonally
-  seas <- watches %>%
-    split(.$Season) %>%
-    walk(\(seas.watches) {
-      agg.by.grid(dat.filt,
-                  grp,
-                  seas.watches,
-                  grid,
-                  unique(seas.watches$Season))
-    })
-  
-  append(yr, seas)
-}
+Includes two pseudo-species, SBRD and WBRD, which include all species marked
+as "Seabirds" and "Waterbirds" in ECSAS, respectively.
 
-# debug(agg_species_group)
-# x <- agg_species_group("Gulls", the.data$distdata, watches, grid)
+```{r aggregate_to_raster}
+species <- c("Sbrd", "Wbrd", names(spec.grps))
+agg.data <- species %>%
+  # Aggregate to raster cells
+  map(\(grp) agg_species_group(grp, the.data$distdata, watches, grid)) %>%
+  setNames(species) %>%
+  # Combine list of species (each with seasonal data) to single structure
+  # for each season across all species
+  combine_species() %>%
+  save_seasonal_shapefiles()
 
-agg.data <- c("SBRD", "WBRD", names(spec.grps)) %>%
-  map(\(grp) agg_species_group(grp, the.data$distdata, watches, grid))
-
+saveRDS(agg.data, file.path(GenDataDir, "agg.data.by.species.rds"))
+# agg.data <- readRDS(file.path(GenDataDir, "agg.data.by.species.rds"))
 ```
-
-
-# Combine species
-```{r}
-# Function to combine any number of lists with the same structure
-combine_lists <- function(...) {
-  # Get all input lists
-  lists <- list(...)
-  
-  # Check that all lists have the same names for the elements
-  if (any(sapply(lists, function(x) !all(names(x) == names(lists[[1]]))))) {
-    stop("All input lists must have the same structure (same names).")
-  }
-  
-  # Combine the lists for each season (spring, summer, fall, winter)
-  combined <- lapply(names(lists[[1]]), function(season) {
-    # Combine the corresponding elements of all lists for this season
-    season_values <- sapply(lists, function(lst) lst[[season]], simplify = FALSE)
-    do.call(c, season_values)  # Combine the elements into one list
-  })
-  
-  # Return a list with the combined values for each season
-  names(combined) <- names(lists[[1]])
-  return(combined)
-}
-
-# Example lists a, b, and c
-a <- list(
-  spring = list(1, 2, 3),
-  summer = list(4, 5, 6),
-  fall = list(7, 8, 9),
-  winter = list(10, 11, 12)
-)
-
-b <- list(
-  spring = list(13, 14, 15),
-  summer = list(16, 17, 18),
-  fall = list(19, 20, 21),
-  winter = list(22, 23, 24)
-)
-
-c <- list(
-  spring = list(25, 26, 27),
-  summer = list(28, 29, 30),
-  fall = list(31, 32, 33),
-  winter = list(34, 35, 36)
-)
-
-# Combine lists a, b, and c into one list
-combined_list <- combine_lists(a, b, c)
-
-# Print the combined list
-print(combined_list)
-
-```
-

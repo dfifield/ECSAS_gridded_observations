@@ -62,8 +62,10 @@ ECSAS.reextract <- FALSE # Requery the database or use existing saved data.
 spec.grps <- list(
   ATPU = "ATPU",
   BLKI = "BLKI",
+  COIE = "COIE",
+  KIEI = "KIEI",
   DOVE = "DOVE",
-  Gulls = c(
+  Gull = c(
     "BHGU",
     "BOGU",
     "BTGU",
@@ -96,12 +98,12 @@ spec.grps <- list(
     "YLGU"
   ),
   # LESP = "LESP",
-  Murres = c("COMU", "TBMU", "UNMU"),
+  Murr = c("COMU", "TBMU", "UNMU"),
   NOFU = "NOFU",
   NOGA = "NOGA",
-  Petrels = c("LESP", "WISP", "UNSP"),
+  Ptrl = c("LESP", "WISP", "UNSP"),
   RAZO = "RAZO",
-  Shearwaters = c(
+  Swtr = c(
     "AUSH",
     "BASH",
     "COSH",

@@ -2547,7 +2547,7 @@ agg.by.grid <- function(obs,
                         save.shapefile = FALSE,
                         save.RDS = FALSE) {
 
-  message("Aggregating ", obs.name, " for ", time.period)
+  message("Aggregating ", obs.name, " during ", time.period)
 
   # Join the watch and obs data
   dat <- watches %>%
@@ -2570,11 +2570,15 @@ agg.by.grid <- function(obs,
     st_transform(proj) %>%
     vect()
 
-  #
+  ### NOTE: choose final field names that will be shapefile friendly
+  ### when combined with 4-letter species codes.
+
+  # pack years into a single number (product of primes) for aggregating to
+  # raster and then unpack as a point object.
   years <- rasterize(agg.data, grid, field = "year", fun = encode_years) %>%
     as.points() %>%
     st_as_sf() %>%
-    mutate(!!paste0(obs.name, "_yrs") := decode_years(year)) %>%
+    mutate(!!paste0(obs.name, "_yr") := decode_years(year)) %>%
     select(-year)
 
   # rasterize nbird summing all points that fall in each cell and convert
@@ -2582,13 +2586,15 @@ agg.by.grid <- function(obs,
   nbirds <- rasterize(agg.data, grid, field = "nbirds", fun = sum) %>%
     as.points() %>%
     st_as_sf() %>%
-    rename(!!paste0(obs.name, "_sum") := sum)
+    mutate(sum = as.integer(sum)) %>%
+    rename(!!paste0(obs.name, "_tot") := sum)
 
   # rasterize summing all points that fall in each cell n_obs and convert to points
   nobs <- rasterize(agg.data, grid, field = "n_obs", fun = sum) %>%
     as.points() %>%
     st_as_sf() %>%
-    rename(!!paste0(obs.name, "_n_obs") := sum)
+    mutate(sum = as.integer(sum)) %>%
+    rename(!!paste0(obs.name, "_n") := sum)
 
   # combine and rename columns
   agg.data.point <- nbirds %>%
@@ -2632,10 +2638,10 @@ agg.by.grid <- function(obs,
 encode_years <- function(years, base = 2000){
   yrs <- unique(years)
 
-  # standardize to 1 == bsae, 2 == base + 1, etc and use as index to choose
+  # standardize to 1 == base, 2 == base + 1, etc and use as index to choose
   # primes
   prms <- ((na.omit(yrs) - base) + 1) %>%
-    nth_prime() %>%
+    primes::nth_prime() %>%
     as.numeric()
 
   # multiply primes together to get a single number. Easy to recover
@@ -2681,6 +2687,37 @@ decode_years <- function(num, base = 2000){
     res[zero.indices] <- NA
     res[!zero.indices] <- yrs
     res
+}
+
+# Aggregate observations dat on watches for a particular taxa (grp) to
+# the raster (grid) both seasonally and year-round. Returns a list of
+# (typically) 5 sf point objects: 1 for year-round and one each for the
+# (tyipcally) 4 seasons.
+agg_species_group <- function(grp, dat, watches, grid){
+  # get species of interest
+  if (grp == "SBRD")
+    dat.filt <- filter(the.data$distdata, Seabird == -1)
+  else if (grp == "WBRD")
+    dat.filt <- filter(the.data$distdata, Waterbird == -1)
+  else
+    dat.filt <- filter(dat, Alpha %in% spec.grps[[grp]])
+
+  # Do year round
+  yr <- list(agg.by.grid(dat.filt, grp, watches, grid, "year_round")) %>%
+    setNames("year_round")
+
+  # Now do seasonally
+  seas <- watches %>%
+    split(.$Season) %>%
+    map(\(seas.watches) {
+      agg.by.grid(dat.filt,
+                  grp,
+                  seas.watches,
+                  grid,
+                  unique(seas.watches$Season))
+    })
+
+  append(yr, seas)
 }
 
 # Do (possibly weighted) kernels
@@ -2788,28 +2825,56 @@ do.kde <- function(dat,
 }
 
 
-combine_seasonal_lists <- function(...) {
-#  Capture all input lists
+# Function to combine like seasons across all species in dat.
+# dat is a list of species where each species element is a list of seasons
+# and each season is a dataframe for that species-season combo.
+combine_species <- function(dat) {
+  message("Combining species")
+  # Check that all lists have the same names for the elements
+  if (any(sapply(dat, function(x) !all(names(x) == names(dat[[1]]))))) {
+    stop("All input lists must have the same structure (same names).")
+  }
 
-  lists <- list(...)
+  # Combine the lists for each season (spring, summer, fall, winter)
+  combined <- lapply(names(dat[[1]]), combine_season, dat)
 
-#  Define the seasons
-
-  seasons <- c("spring", "summer", "fall", "winter")
-
-#  Combine lists using dplyr
-
-  combined_list <- lapply(seasons, function(season) {
-    lists %>% purrr::map( ~ .x[[season]]) %>% unlist(recursive = FALSE)
-  }) %>% setNames(seasons)
-
-  return(combined_list)
+  # Return a list with the combined values for each season
+  names(combined) <- names(dat[[1]])
+  return(combined)
 }
-# Example usage:
-#
-#   list1 <- list(spring = list("flowers", "rain"), summer = list("beach", "sun"), fall = list("leaves", "harvest"), winter = list("snow", "holiday"))
-#
-# list2 <- list(spring = list("breeze", "greenery"), summer = list("vacation", "heat"), fall = list("pumpkin", "chilly"), winter = list("skiing", "fireplace"))
-#
-# combined <- combine_seasonal_lists(list1, list2) print(combined)
 
+# Combine a single season from all species.
+# dat is a list of species where each species element is a list of seasons
+# and each season is a dataframe for that species-season combo.
+combine_season <- function(season, dat) {
+  # Get the geometry for this season from 1st species in dat
+  geom <- st_geometry(dat[[1]][[season]])
+
+  # Extract given season from each species
+  season_values <- sapply(dat, function(species){
+    st_drop_geometry(species[[season]])
+  }, simplify = FALSE)
+
+  # Combine the columns for all species and reset the geometry that was removed
+  # earlier
+  ret <- Reduce(cbind, season_values) %>%
+    st_set_geometry(geom)
+  ret
+}
+
+
+# Take a named list of seasonal sf objects and save each one as a shapefile.
+save_seasonal_shapefiles <- function(seas_list){
+  imap(seas_list, \(dat, season) {
+    message("Saving shapefile for ", season)
+    st_write(dat,
+             dsn = ShapeDir,
+             layer = paste("ECSAS", season, "aggregated_obs", sep = "_"),
+             driver = "ESRI Shapefile",
+             delete_layer = TRUE
+    )
+
+  })
+
+  invisible(seas_list)
+}
