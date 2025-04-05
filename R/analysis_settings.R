@@ -62,7 +62,7 @@ ECSAS.reextract <- FALSE # Requery the database or use existing saved data.
 spec.grps <- list(
   ATPU = "ATPU",
   BLKI = "BLKI",
-  COIE = "COIE",
+  COEI = "COEI",
   KIEI = "KIEI",
   DOVE = "DOVE",
   Gull = c(

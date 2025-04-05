@@ -715,8 +715,8 @@
       "RemoteRepo": "dftools",
       "RemoteUsername": "dfifield",
       "RemoteRef": "HEAD",
-      "RemoteSha": "2fb5840225356a27ec1db3100d677c2287f5ba86",
-      "Hash": "5beea749d143977f977ecd220664c546"
+      "RemoteSha": "897daf4a25af230ca3bbc1e24dcbb776a5452327",
+      "Hash": "ea789c235ef567104e0d018a857b2dd4"
     },
     "digest": {
       "Package": "digest",
@@ -1161,6 +1161,17 @@
       ],
       "Hash": "5899f1eaa825580172bb56c08266f37c"
     },
+    "gmp": {
+      "Package": "gmp",
+      "Version": "0.7-5",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "methods"
+      ],
+      "Hash": "47b774de7ee40f6134cfdeab3fc85df9"
+    },
     "googledrive": {
       "Package": "googledrive",
       "Version": "2.1.1",
@@ -1507,6 +1518,31 @@
         "V8"
       ],
       "Hash": "81054bf17db72db68871baefcfd209cf"
+    },
+    "kableExtra": {
+      "Package": "kableExtra",
+      "Version": "1.4.0",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "digest",
+        "grDevices",
+        "graphics",
+        "htmltools",
+        "knitr",
+        "magrittr",
+        "rmarkdown",
+        "rstudioapi",
+        "scales",
+        "stats",
+        "stringr",
+        "svglite",
+        "tools",
+        "viridisLite",
+        "xml2"
+      ],
+      "Hash": "532d16304274c23c8563f94b79351c86"
     },
     "knitr": {
       "Package": "knitr",
@@ -2018,6 +2054,17 @@
       ],
       "Hash": "6b01fc98b1e86c4f705ce9dcfd2f57c7"
     },
+    "primes": {
+      "Package": "primes",
+      "Version": "1.6.1",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "Rcpp"
+      ],
+      "Hash": "e3d61269ae150747de2e380b4ad00c3e"
+    },
     "processx": {
       "Package": "processx",
       "Version": "3.8.6",
@@ -2319,6 +2366,21 @@
       ],
       "Hash": "df99277f63d01c34e95e3d2f06a79736"
     },
+    "rnaturalearth": {
+      "Package": "rnaturalearth",
+      "Version": "1.0.1",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "httr",
+        "jsonlite",
+        "sf",
+        "terra",
+        "utils"
+      ],
+      "Hash": "741166cab0fe76d8a5670d3ee459a2a4"
+    },
     "rprojroot": {
       "Package": "rprojroot",
       "Version": "2.0.4",
@@ -2514,6 +2576,17 @@
       ],
       "Hash": "fcf382cdf0c78de67b7464d5b669ff2d"
     },
+    "splitstackshape": {
+      "Package": "splitstackshape",
+      "Version": "1.4.8",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "data.table"
+      ],
+      "Hash": "69b26ceb9f7976f347049b4d470c2d65"
+    },
     "stars": {
       "Package": "stars",
       "Version": "0.5-2",
@@ -2573,6 +2646,18 @@
         "vctrs"
       ],
       "Hash": "960e2ae9e09656611e0b8214ad543207"
+    },
+    "svglite": {
+      "Package": "svglite",
+      "Version": "2.1.3",
+      "Source": "Repository",
+      "Repository": "RSPM",
+      "Requirements": [
+        "R",
+        "cpp11",
+        "systemfonts"
+      ],
+      "Hash": "124a41fdfa23e8691cb744c762f10516"
     },
     "sys": {
       "Package": "sys",

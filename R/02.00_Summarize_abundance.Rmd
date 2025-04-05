@@ -1,0 +1,125 @@
+---
+title: "ECSAS observation summary"
+author: "Dave Fifield"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r get_data, include=FALSE}
+source(here::here("R/analysis_settings.R"), echo = FALSE)
+the.data <- readRDS(the.data.file)
+```
+
+
+# Summary by species name
+
+```{r summ_spec, echo = FALSE}
+the.data$distdata %>%
+  rename(Count = size) %>% 
+  group_by(English) %>%
+  summarise(Alpha = unique(Alpha),
+            Seabird = if (unique(Seabird) == -1) TRUE else FALSE,
+            Waterbird = if (unique(Waterbird) == -1) TRUE else FALSE,
+            Num_Obs = n(),
+            Num_watch = length(unique(WatchID)),
+            Total_Count = sum(Count, na.rm = TRUE)) %>%
+  arrange(desc(Total_Count)) %>% 
+  knitr::kable("html") %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = TRUE
+  )
+```
+
+# Species/groups of interest
+
+```{r single_species_groups, echo=FALSE}
+library(htmltools)
+
+idx <- lapply(spec.grps, length) %>% unlist() == 1
+the.species <- names(spec.grps)[idx]
+single.species.html <- tags$ul(
+      # List items with more indentation
+      lapply(the.species, function(item) {
+        tags$li(item)  # Add each item under the group with more indentation
+      })
+    )
+
+# Combine all lists into a single HTML page
+html_page <- tags$html(
+  tags$head(),
+  tags$body(
+    tags$h2("Single species groups"),
+    tags$div(single.species.html)  # Add all groups to the body
+  )
+)
+  
+# Return the HTML content as a browsable object
+browsable(html_page)
+
+```
+
+```{r multi_species, echo=FALSE}
+
+# Function to create a nicely formatted HTML list with indentation
+generate_html_list <- function(spec.grps) {
+  # Create a list of HTML content
+  html_content <- lapply(names(spec.grps), function(group_name) {
+    group_items <- spec.grps[[group_name]]
+    
+    # Create an unordered list for each group
+    group_html <- tags$ul(
+      # Group name with a smaller indentation
+      tags$li(style = "font-weight: bold; margin-left: 0;", group_name),  # Add group name as list header
+      
+      # List items with more indentation
+      lapply(group_items, function(item) {
+        tags$li(style = "margin-left: 20px;", item)  # Add each item under the group with more indentation
+      })
+    )
+    group_html
+  })
+  
+  # Combine all lists into a single HTML page
+  html_page <- tags$html(
+    tags$head(),
+    tags$body(
+      tags$h2("Multi-species Taxa"),
+      do.call(tags$div, html_content)  # Add all groups to the body
+    )
+  )
+  
+  # Return the HTML content as a browsable object
+  browsable(html_page)
+}
+
+# debug(generate_html_list)
+
+# Generate the HTML and print it
+html_output <- generate_html_list(spec.grps[!idx])
+html_output
+```
+
+
+# Summary table for species/groups of interest
+```{r grp, echo=FALSE}
+the.data$distdata %>%
+  rename(Count = size) %>% 
+  filter(!is.na(spec.grp)) %>% 
+  group_by(spec.grp) %>%
+  summarise(Seabird = if (unique(Seabird) == -1) TRUE else FALSE,
+            Waterbird = if (unique(Waterbird) == -1) TRUE else FALSE,
+            Num_Obs = n(),
+            Num_watch = length(unique(WatchID)),
+            Total_Count = sum(Count, na.rm = TRUE)) %>%
+  rename(Species_Group = spec.grp) %>% 
+  arrange(desc(Total_Count)) %>% 
+  knitr::kable("html") %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = T
+  )
+```

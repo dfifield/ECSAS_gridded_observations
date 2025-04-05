@@ -275,7 +275,8 @@ create.survey.data <- function(raw.dat = NULL,
       Sex,
       DistanceCode,
       Seabird,
-      Waterbird
+      Waterbird,
+      spec.grp
     ) %>%
     mutate(
       Windspeed = case_when(
@@ -2695,9 +2696,9 @@ decode_years <- function(num, base = 2000){
 # (tyipcally) 4 seasons.
 agg_species_group <- function(grp, dat, watches, grid){
   # get species of interest
-  if (grp == "SBRD")
+  if (grp == "Sbrd")
     dat.filt <- filter(the.data$distdata, Seabird == -1)
-  else if (grp == "WBRD")
+  else if (grp == "Wbrd")
     dat.filt <- filter(the.data$distdata, Waterbird == -1)
   else
     dat.filt <- filter(dat, Alpha %in% spec.grps[[grp]])

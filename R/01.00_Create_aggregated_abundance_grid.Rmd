@@ -35,7 +35,7 @@ watches <- the.data$watches %>%
 
 # Aggregate 
 
-Aggregate observations by watch and then to gridcell on a seasonal basis
+Aggregate observations by watch and then to grid cell on a seasonal basis
 combining across all species of interest.
 
 Includes two pseudo-species, SBRD and WBRD, which include all species marked
