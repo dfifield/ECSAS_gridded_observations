@@ -16,38 +16,14 @@ source(here::here("R/analysis_settings.R"), echo = FALSE)
 the.data <- readRDS(the.data.file)
 ```
 
+# Summary by groups
 
-# List of multi-species groups
+## List of multi-species groups
 
 The following multi-species groups are used in the summary table below.
 
 ```{r single_species_groups, echo=FALSE}
 library(htmltools)
-
-# idx <- lapply(spec.grps, length) %>% unlist() == 1
-# the.species <- names(spec.grps)[idx]
-# 
-# No need to do these here since they will be covered below when we do all
-# species in ECSAS.
-# 
-# single.species.html <- htmltools::tags$ul(
-#       # List items with more indentation
-#       lapply(the.species, function(item) {
-#         htmltools::tags$li(item)  # Add each item under the group with more indentation
-#       })
-#     )
-# 
-# # Combine all lists into a single HTML page
-# html_page <- htmltools::tags$html(
-#   htmltools::tags$head(),
-#   htmltools::tags$body(
-#     htmltools::tags$h2("Single species groups"),
-#     htmltools::tags$div(single.species.html)  # Add all groups to the body
-#   )
-# )
-#   
-# # Return the HTML content as a browsable object
-# htmltools::browsable(html_page)
 
 # Do species groups of interest - get multi-species groups
 idx <- lapply(spec.grps, length) %>% unlist() != 1
@@ -55,8 +31,16 @@ generate_html_species_list(spec.grps[idx])
 ```
 
 
-# Summary table for species/groups of interest
 ```{r grp, echo=FALSE}
+
+```
+
+
+## Group summary table
+
+Summary for species groups of interest.
+
+```{r summ_grps, echo = FALSE}
 # Deal with Sbrds and Wbrds first
 sbrds.summ <- the.data$distdata %>%
   rename(Count = size) %>% 
@@ -93,25 +77,30 @@ othr.grps.summ <- the.data$distdata %>%
             Num_Obs = n(),
             Num_watch = length(unique(WatchID)),
             Total_Count = sum(Count, na.rm = TRUE)) %>% 
-  mutate(English = unlist(spec.grps.names[othr.grps.summ$spec.grp])) %>% 
+  mutate(English = unlist(spec.grps.names[spec.grp])) %>% 
   select(-spec.grp) %>% 
   relocate(English)
 
-rbind(sbrds.summ, wbrds.summ, othr.grps.summ) %>% 
-  arrange(desc(Total_Count)) %>% 
+rbind(sbrds.summ, wbrds.summ, othr.grps.summ) %>%
+  arrange(desc(Total_Count)) %>%
   knitr::kable("html") %>%
   kableExtra::kable_styling(
     bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-    full_width = T
+    full_width = TRUE
   )
+
 ```
 
+# Individual species (or taxa) summary
 
-# Summary all species by species name
+These taxa are generally single species except for cases where identification
+to species was not possible, in which case they are to the lowest possible
+taxon. 
 
-Summarize observations by ECSAS taxa entry.
+```{r summary_all, echo=FALSE}
+# Now summarize by "English" species name from ECSAS, add in the group
+# summaries from above
 
-```{r summ_spec, echo = FALSE}
 the.data$distdata %>%
   rename(Count = size) %>% 
   group_by(English) %>%
@@ -121,7 +110,6 @@ the.data$distdata %>%
             Num_Obs = n(),
             Num_watch = length(unique(WatchID)),
             Total_Count = sum(Count, na.rm = TRUE)) %>%
-  rbind(sbrds.summ, wbrds.summ, othr.grps.summ) %>%
   arrange(desc(Total_Count)) %>% 
   knitr::kable("html") %>%
   kableExtra::kable_styling(
