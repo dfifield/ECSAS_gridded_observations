@@ -2879,3 +2879,37 @@ save_seasonal_shapefiles <- function(seas_list){
 
   invisible(seas_list)
 }
+
+
+
+# Function to create a nicely formatted HTML list with indentation
+generate_html_species_list <- function(spec.grps) {
+  # Create a list of HTML content
+  html_content <- lapply(names(spec.grps), function(group_name) {
+    group_items <- spec.grps[[group_name]]
+
+    # Create an unordered list for each group
+    group_html <- htmltools::tags$ul(
+      # Group name with a smaller indentation
+      htmltools::tags$li(style = "font-weight: bold; margin-left: 0;", group_name),  # Add group name as list header
+
+      # List items with more indentation
+      lapply(group_items, function(item) {
+        htmltools::tags$li(style = "margin-left: 20px;", item)  # Add each item under the group with more indentation
+      })
+    )
+    group_html
+  })
+
+  # Combine all lists into a single HTML page
+  html_page <- htmltools::tags$html(
+    htmltools::tags$head(),
+    htmltools::tags$body(
+      # htmltools::tags$h2("Multi-species groups"),
+      do.call(htmltools::tags$div, html_content)  # Add all groups to the body
+    )
+  )
+
+  # Return the HTML content as a browsable object
+  htmltools::browsable(html_page)
+}

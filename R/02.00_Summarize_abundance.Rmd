@@ -2,7 +2,10 @@
 title: "ECSAS observation summary"
 author: "Dave Fifield"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  html_document: 
+    toc: true
+    number_sections: true
 editor_options: 
   chunk_output_type: console
 ---
@@ -14,112 +17,115 @@ the.data <- readRDS(the.data.file)
 ```
 
 
-# Summary by species name
+# List of multi-species groups
 
-```{r summ_spec, echo = FALSE}
-the.data$distdata %>%
-  rename(Count = size) %>% 
-  group_by(English) %>%
-  summarise(Alpha = unique(Alpha),
-            Seabird = if (unique(Seabird) == -1) TRUE else FALSE,
-            Waterbird = if (unique(Waterbird) == -1) TRUE else FALSE,
-            Num_Obs = n(),
-            Num_watch = length(unique(WatchID)),
-            Total_Count = sum(Count, na.rm = TRUE)) %>%
-  arrange(desc(Total_Count)) %>% 
-  knitr::kable("html") %>%
-  kableExtra::kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-    full_width = TRUE
-  )
-```
-
-# Species/groups of interest
+The following multi-species groups are used in the summary table below.
 
 ```{r single_species_groups, echo=FALSE}
 library(htmltools)
 
-idx <- lapply(spec.grps, length) %>% unlist() == 1
-the.species <- names(spec.grps)[idx]
-single.species.html <- tags$ul(
-      # List items with more indentation
-      lapply(the.species, function(item) {
-        tags$li(item)  # Add each item under the group with more indentation
-      })
-    )
+# idx <- lapply(spec.grps, length) %>% unlist() == 1
+# the.species <- names(spec.grps)[idx]
+# 
+# No need to do these here since they will be covered below when we do all
+# species in ECSAS.
+# 
+# single.species.html <- htmltools::tags$ul(
+#       # List items with more indentation
+#       lapply(the.species, function(item) {
+#         htmltools::tags$li(item)  # Add each item under the group with more indentation
+#       })
+#     )
+# 
+# # Combine all lists into a single HTML page
+# html_page <- htmltools::tags$html(
+#   htmltools::tags$head(),
+#   htmltools::tags$body(
+#     htmltools::tags$h2("Single species groups"),
+#     htmltools::tags$div(single.species.html)  # Add all groups to the body
+#   )
+# )
+#   
+# # Return the HTML content as a browsable object
+# htmltools::browsable(html_page)
 
-# Combine all lists into a single HTML page
-html_page <- tags$html(
-  tags$head(),
-  tags$body(
-    tags$h2("Single species groups"),
-    tags$div(single.species.html)  # Add all groups to the body
-  )
-)
-  
-# Return the HTML content as a browsable object
-browsable(html_page)
-
-```
-
-```{r multi_species, echo=FALSE}
-
-# Function to create a nicely formatted HTML list with indentation
-generate_html_list <- function(spec.grps) {
-  # Create a list of HTML content
-  html_content <- lapply(names(spec.grps), function(group_name) {
-    group_items <- spec.grps[[group_name]]
-    
-    # Create an unordered list for each group
-    group_html <- tags$ul(
-      # Group name with a smaller indentation
-      tags$li(style = "font-weight: bold; margin-left: 0;", group_name),  # Add group name as list header
-      
-      # List items with more indentation
-      lapply(group_items, function(item) {
-        tags$li(style = "margin-left: 20px;", item)  # Add each item under the group with more indentation
-      })
-    )
-    group_html
-  })
-  
-  # Combine all lists into a single HTML page
-  html_page <- tags$html(
-    tags$head(),
-    tags$body(
-      tags$h2("Multi-species Taxa"),
-      do.call(tags$div, html_content)  # Add all groups to the body
-    )
-  )
-  
-  # Return the HTML content as a browsable object
-  browsable(html_page)
-}
-
-# debug(generate_html_list)
-
-# Generate the HTML and print it
-html_output <- generate_html_list(spec.grps[!idx])
-html_output
+# Do species groups of interest - get multi-species groups
+idx <- lapply(spec.grps, length) %>% unlist() != 1
+generate_html_species_list(spec.grps[idx])
 ```
 
 
 # Summary table for species/groups of interest
 ```{r grp, echo=FALSE}
-the.data$distdata %>%
+# Deal with Sbrds and Wbrds first
+sbrds.summ <- the.data$distdata %>%
   rename(Count = size) %>% 
-  filter(!is.na(spec.grp)) %>% 
-  group_by(spec.grp) %>%
-  summarise(Seabird = if (unique(Seabird) == -1) TRUE else FALSE,
-            Waterbird = if (unique(Waterbird) == -1) TRUE else FALSE,
+  filter(Seabird == -1) %>% 
+  summarise(`4_letter_code` = "Sbrd",
+            Seabird = TRUE,
+            Waterbird = NA,
             Num_Obs = n(),
             Num_watch = length(unique(WatchID)),
             Total_Count = sum(Count, na.rm = TRUE)) %>%
-  rename(Species_Group = spec.grp) %>% 
+  mutate(English = "All Seabirds") %>% 
+  relocate(English)
+
+wbrds.summ <- the.data$distdata %>%
+  rename(Count = size) %>% 
+  filter(Waterbird == -1) %>% 
+  summarise(`4_letter_code` = "Wbrd",
+            Seabird = NA,
+            Waterbird = TRUE,
+            Num_Obs = n(),
+            Num_watch = length(unique(WatchID)),
+            Total_Count = sum(Count, na.rm = TRUE)) %>%
+  mutate(English = "All Waterbirds") %>% 
+  relocate(English)
+
+# Now do the multi-species spec.grps
+othr.grps.summ <- the.data$distdata %>%
+  rename(Count = size) %>% 
+  filter(!is.na(spec.grp) & spec.grp %in% names(spec.grps[idx])) %>% 
+  group_by(spec.grp) %>% 
+  summarise(`4_letter_code` = unique(spec.grp),
+            Seabird = if (unique(Seabird) == -1) TRUE else FALSE,
+            Waterbird = if (unique(Waterbird) == -1) TRUE else FALSE,
+            Num_Obs = n(),
+            Num_watch = length(unique(WatchID)),
+            Total_Count = sum(Count, na.rm = TRUE)) %>% 
+  mutate(English = unlist(spec.grps.names[othr.grps.summ$spec.grp])) %>% 
+  select(-spec.grp) %>% 
+  relocate(English)
+
+rbind(sbrds.summ, wbrds.summ, othr.grps.summ) %>% 
   arrange(desc(Total_Count)) %>% 
   knitr::kable("html") %>%
   kableExtra::kable_styling(
     bootstrap_options = c("striped", "hover", "condensed", "responsive"),
     full_width = T
+  )
+```
+
+
+# Summary all species by species name
+
+Summarize observations by ECSAS taxa entry.
+
+```{r summ_spec, echo = FALSE}
+the.data$distdata %>%
+  rename(Count = size) %>% 
+  group_by(English) %>%
+  summarise(`4_letter_code` = unique(Alpha),
+            Seabird = if (unique(Seabird) == -1) TRUE else FALSE,
+            Waterbird = if (unique(Waterbird) == -1) TRUE else FALSE,
+            Num_Obs = n(),
+            Num_watch = length(unique(WatchID)),
+            Total_Count = sum(Count, na.rm = TRUE)) %>%
+  rbind(sbrds.summ, wbrds.summ, othr.grps.summ) %>%
+  arrange(desc(Total_Count)) %>% 
+  knitr::kable("html") %>%
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = TRUE
   )
 ```

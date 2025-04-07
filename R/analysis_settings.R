@@ -118,6 +118,9 @@ spec.grps <- list(
   )
 )
 
+spec.grps.names <- list(Gull = "Gulls", Murr = "Murres", Ptrl = "Storm-Petrels",
+                        Swtr = "Shearwaters")
+
 # messed up watches removed
 # ECSAS.remove <- c(-1997427588, 1865804800)
 ECSAS.ship.cruise.remove <- c(
