@@ -98,6 +98,7 @@ check.problem.data = function(alldat,
 create.survey.data <- function(raw.dat = NULL,
                                dataset = NULL,
                                file.prefix = NULL,
+                               study.area = NULL,
                                inproj = 4326,
                                outproj = segProj,
                                saveshp = TRUE,
@@ -2542,7 +2543,6 @@ do.env.covar <- function(env_covar_spec,
 #     name the resulting shapefile
 agg.by.grid <- function(obs,
                         obs.name,
-                        watches,
                         grid,
                         time.period,
                         save.shapefile = FALSE,
@@ -2550,48 +2550,55 @@ agg.by.grid <- function(obs,
 
   message("Aggregating ", obs.name, " during ", time.period)
 
-  # Join the watch and obs data
-  dat <- watches %>%
-    mutate(year = year(Date)) %>%
-    left_join(obs, by = "WatchID")
+  # sum number of birds and number of obs.
+  # agg.data <- dat %>%
+  #   group_by(WatchID) %>%
+  #   summarise(year = unique(year), nbirds = sum(size), n_obs = n()) %>%
+  #   mutate(nbirds = case_when(is.na(nbirds) ~ 0, .default = nbirds),
+  #          n_obs = case_when(nbirds == 0 ~ 0, .default = n_obs)) %>%
+  #   left_join(select(watches, WatchID, LatStart, LongStart), by = "WatchID") %>%
+  #   st_as_sf(
+  #     coords = c("LongStart", "LatStart"),
+  #     crs = st_crs("EPSG:4326"),
+  #     remove = FALSE
+  #   ) %>%
+  #   st_transform(proj) %>%
+  #   vect()
 
-  # sum number of birds and number of obs by watch.
-  # Set tot_size and n_obs to 0 for watches with no obs.
-  agg.data <- dat %>%
-    group_by(WatchID) %>%
-    summarise(year = unique(year), nbirds = sum(size), n_obs = n()) %>%
-    mutate(nbirds = case_when(is.na(nbirds) ~ 0, .default = nbirds),
-           n_obs = case_when(nbirds == 0 ~ 0, .default = n_obs)) %>%
-    left_join(select(watches, WatchID, LatStart, LongStart), by = "WatchID") %>%
-    st_as_sf(
-      coords = c("LongStart", "LatStart"),
-      crs = st_crs("EPSG:4326"),
-      remove = FALSE
-    ) %>%
+  obs.vect <- st_as_sf(
+    obs,
+    coords = c("LongStart", "LatStart"),
+    crs = st_crs("EPSG:4326"),
+    remove = FALSE
+  ) %>%
+    mutate(count = 1) %>% # for counting obs
     st_transform(proj) %>%
     vect()
 
-  ### NOTE: choose final field names that will be shapefile friendly
-  ### when combined with 4-letter species codes.
+  ## Aggregate fields of interest onto the grid.
 
-  # pack years into a single number (product of primes) for aggregating to
+  # NOTE: choose final field names that will be shapefile friendly
+  # when combined with 4-letter species codes.
+
+
+  # This packs years into a single number (product of primes) for aggregating to
   # raster and then unpack as a point object.
-  years <- rasterize(agg.data, grid, field = "year", fun = encode_years) %>%
+  years <- rasterize(obs.vect, grid, field = "Year", fun = encode_years) %>%
     as.points() %>%
     st_as_sf() %>%
-    mutate(!!paste0(obs.name, "_yr") := decode_years(year)) %>%
-    select(-year)
+    mutate(!!paste0(obs.name, "_yr") := decode_years(Year)) %>%
+    select(-Year)
 
   # rasterize nbird summing all points that fall in each cell and convert
   # to points
-  nbirds <- rasterize(agg.data, grid, field = "nbirds", fun = sum) %>%
+  nbirds <- rasterize(obs.vect, grid, field = "size", fun = sum) %>%
     as.points() %>%
     st_as_sf() %>%
     mutate(sum = as.integer(sum)) %>%
     rename(!!paste0(obs.name, "_tot") := sum)
 
   # rasterize summing all points that fall in each cell n_obs and convert to points
-  nobs <- rasterize(agg.data, grid, field = "n_obs", fun = sum) %>%
+  nobs <- rasterize(obs.vect, grid, field = "count", fun = sum) %>%
     as.points() %>%
     st_as_sf() %>%
     mutate(sum = as.integer(sum)) %>%
@@ -2617,7 +2624,7 @@ agg.by.grid <- function(obs,
     )
 
   if (save.RDS)
-    saveRDS(agg.data.point,
+    write_rds(agg.data.point,
             file = file.path(GenDataDir, paste0(filename, ".rds")))
 
   invisible(agg.data.point)
@@ -2690,32 +2697,31 @@ decode_years <- function(num, base = 2000){
     res
 }
 
-# Aggregate observations dat on watches for a particular taxa (grp) to
+# Aggregate observations dat for a particular taxa (grp) to
 # the raster (grid) both seasonally and year-round. Returns a list of
 # (typically) 5 sf point objects: 1 for year-round and one each for the
 # (tyipcally) 4 seasons.
-agg_species_group <- function(grp, dat, watches, grid){
+agg_species_group <- function(grp, dat, grid){
   # get species of interest
   if (grp == "Sbrd")
-    dat.filt <- filter(the.data$distdata, Seabird == -1)
+    dat.filt <- filter(dat, Seabird == -1)
   else if (grp == "Wbrd")
-    dat.filt <- filter(the.data$distdata, Waterbird == -1)
+    dat.filt <- filter(dat, Waterbird == -1)
   else
     dat.filt <- filter(dat, Alpha %in% spec.grps[[grp]])
 
   # Do year round
-  yr <- list(agg.by.grid(dat.filt, grp, watches, grid, "year_round")) %>%
+  yr <- list(agg.by.grid(dat.filt, grp, grid, "year_round")) %>%
     setNames("year_round")
 
   # Now do seasonally
-  seas <- watches %>%
+  seas <- dat.filt %>%
     split(.$Season) %>%
-    map(\(seas.watches) {
-      agg.by.grid(dat.filt,
+    map(\(seas.dat) {
+      agg.by.grid(seas.dat,
                   grp,
-                  seas.watches,
                   grid,
-                  unique(seas.watches$Season))
+                  unique(seas.dat$Season))
     })
 
   append(yr, seas)
@@ -2819,7 +2825,7 @@ do.kde <- function(dat,
     )
   })
 
-  saveRDS(polys,
+  write_Rds(polys,
           # file = file.path(share_drive, "ECSAS", paste0(filename, ".RDS")))
           file = file.path("raw-data", paste0(filename, ".RDS")))
   polys

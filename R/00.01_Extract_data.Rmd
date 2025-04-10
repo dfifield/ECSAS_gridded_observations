@@ -40,152 +40,229 @@ if (ECSAS.reextract) {
 }
 
 progs <- ECSAS.get.table(ecsas.path = ECSAS.Path, "lkpProgram")
-ecsas.ship.dat <- ecsas.ship.dat %>%
+ecsas.ship.distdata <- ecsas.ship.dat %>%
   left_join(progs, by = c("Program" = "ProgramID")) %>%
   dplyr::filter(
     Program %in% c(4, 6),
-    # Quebec == 0,
-    #!(CruiseID %in% ECSAS.ship.cruise.remove),
-    #!(WatchID %in% ECSAS.ship.watch.remove),
-    # PlatformClass == 3,
-    # PlatformSpeed > 4, # Note this removes watches where PlatformSpeed is NA
-    # Snapshot == -1,
-    # ScanType == 10,
-    # !is.na(PlatformDir), # Why is this one here? Is it to have a direction to
-    # project end positions?
-    # !is.na(WatchLenKm),
-    # !is.na(ObsLen),
-    # !is.na(WhatCount),
-    # CalcDurMin > 0,
-    # Remove very short watches. These outliers can mess up dsm gam predictions
-    # as well as CDS analyses, resulting in very large densities.
-    # WatchLenKm > .3,
-    # TransFarEdge > 0,
-    # Some obs are marked as InTransect yet have DistanceCode of E, H, J, L, T.
-    # These are obs that were beyond the edge of surveyed transect so remove them.
-    # !(DistanceCode %in% c("E", "H", "J", "L", "T"))
-    ) %>% 
-# !(WatchID %in% ECSAS.remove)) # include this to hand-remove other watches
-
-  mutate(    
+    !is.na(Count),
+    !is.na(DistMeth),
+    !is.na(FlockID),
+    FlySwim %in% c("W", "F"),
+    DataSharing == 1
+  ) %>%
+  mutate(
     SurveyType = "Ship",
-    # Long start is negative, but LongEnd isnt. Around 600 of these.
-    LongEnd = case_when(sign(LongEnd) != sign(LongStart) ~ 
-                               LongEnd * sign(LongStart),
-                             TRUE ~ LongEnd),
-    # recalculate now that LongEnd is fixed (if end posn exists)
-    WatchLenKm = case_when(!is.na(LongStart) & !is.na(LongEnd) ~
-                           geosphere::distGeo(cbind(LongStart, LatStart), 
-                                              cbind(LongEnd,  LatEnd))/1000,
-                           TRUE ~ WatchLenKm
-                           ),
-    # make IDs unique across datasets
-    CruiseID = paste0("ECSAS_shp_", CruiseID),
-    WatchID = paste0("ECSAS_shp_", WatchID),
-    # FlockID = paste0("ECSAS_shp_", FlockID), # makes dummy_ddf() unhappy b/c
-    # it wants numeric ids
-    TransectID = NA, # So it's consistent with the aerial data
-    TotalWidthKm = TransFarEdge/1000,
     spec.grp = find.spec.grp(Alpha),
-    FlySwim = toupper(FlySwim) # Some are lowercase although shouldn't be possible.
-    )
-
-# Check to make sure all rows have DistMeth
-# stopifnot(all(!is.na(ecsas.ship.dat$DistMeth)))
-```
-
-## Create preliminary shapefile
-
-```{r create_prelim_shp}
-ecsas.ship.dat.sf <- ecsas.ship.dat %>%
+    InTransect = case_when(InTransect == -1 ~ TRUE, 
+                           InTransect == 0 ~ FALSE, 
+                           .default = NA),
+    Distance = Distance / 1000,
+    # Distance = case_when(is.na(Distance) ~ 0, TRUE ~ Distance),
+    DistType = assign.dist.type(.),
+    Windspeed = case_when(
+      is.na(Windspeed) &
+        !is.na(Windforce) ~ left_join(., beaufort_conversion, 
+                                      by = c("Windforce" = "beaufort"))$speed.kts,
+      TRUE ~ Windspeed
+    ),
+    Visibility = case_when(Visibility > 20 ~ 20, TRUE ~ Visibility),
+    FlySwim = as.factor(FlySwim),
+    distbegin = NA_integer_,
+    distend = NA_integer_,
+    BlindWidth = NA,
+  ) %>%
+  rename(object = FlockID,
+         size = Count,
+         distance = Distance) %>%
   select(
-    CruiseID,
-    PlatformName,
-    PlatformClass,
-    Program,
-    WatchID,
-    ObserverName,
+    object,
+    Alpha,
+    Association,
+    BlindWidth,
+    DataSharing,
     Date,
+    distance,
+    distbegin,
+    distend,
+    DistMeth,
+    DistType,
+    English,
+    FlySwim,
+    InTransect,
     LatStart,
     LongStart,
-    FlockID,
-    Alpha,
-    English,
-    Count,
-    FlySwim,
     Seabird,
+    SeaState,
+    size,
+    spec.grp,
+    SurveyType,
+    Swell,
     Waterbird,
-    spec.grp
+    Windspeed,
+    Year
   ) %>%
-  st_as_sf(coords = c("LongStart", "LatStart"), crs = 4326, remove = FALSE) %>%
+  droplevels
+
+
+# Check to make sure all rows have DistMeth
+stopifnot(all(!is.na(ecsas.ship.distdata$DistMeth)))
+
+# Summary
+summary(ecsas.ship.distdata)
+
+write_rds(ecsas.ship.distdata,
+     file = file.path(GenDataDir, "ECSAS_ship_the_data.rds"))
+# ecsas.ship.distdata <- read_rds(file = file.path(GenDataDir,"ECSAS_ship_the_data.rds"))
+```
+
+# Import Aerial Data
+
+## Import ECSAS aerial data
+
+```{r create_ecsas_air_watch_trans}
+# Import aerial data remove QC data for now since we have no positions for them.
+ecsas.air.dat.on.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial on-effort data.xlsx")) %>% 
+  filter(!is.na(AerialObsID),
+         StudyAreaName != "GenericPQ",
+         FlySwim %in% c("W", "F"),
+         DataSharing == 1)  %>%
+  select(
+    AerialObsID,
+    Alpha,
+    Association,
+    BlindWidth,
+    Count,
+    DataSharing,
+    Distance_m,
+    dist_begin,
+    dist_end,
+    DistMeth,
+    English,
+    FlySwim,
+    InTransect,
+    ObsLat,
+    ObsLong,
+    ObsTime,
+    SeaState,
+    Seabird,
+    Waterbird
+  )
+
+# 7128 records
+
+# Get off effort obs
+ecsas.air.dat.off.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial off-effort data.xlsx")) %>%
+  filter(StudyAreaName != "GenericPQ",
+         FlySwim %in% c("W", "F"),
+         DataSharing == 1) %>%
+  select(
+    AerialObsID,
+    Alpha,
+    Association,
+    Count,
+    DataSharing,
+    Distance_m,
+    dist_begin,
+    dist_end,
+    DistMeth,
+    English,
+    FlySwim,
+    InTransect,
+    ObsLat,
+    ObsLong,
+    ObsTime,
+    Seabird,
+    Waterbird
+  ) %>%
+  mutate(SeaState = NA, BlindWidth = NA)
+
+# 153 obs
+
+ecsas.air.distdata <- rbind(ecsas.air.dat.on.effort, ecsas.air.dat.off.effort) %>%
+  rename(
+    LatStart = ObsLat,
+    LongStart = ObsLong,
+    distbegin = dist_begin,
+    distend = dist_end,
+    Date = ObsTime,
+    object = AerialObsID,
+    size = Count,
+    distance = Distance_m
+  ) %>% 
+  filter(!is.na(LatStart), !is.na(LongStart)) %>%  # Some off-effort have none
+  mutate(
+    SurveyType = "Air",
+    DistType = "Perp.",
+    Seabird = -1,
+    Swell = NA,
+    Windspeed = NA,
+    distbegin = distbegin / 1000,
+    distend = distend / 1000,
+    spec.grp = find.spec.grp(Alpha),
+    Year = year(Date),
+    distance = case_when(is.na(distance) ~ 0, TRUE ~ distance)
+  ) 
+
+summary(ecsas.air.distdata)
+
+write_rds(ecsas.air.distdata,
+     file = file.path(GenDataDir, "ECSAS_air_the_data.rds"))
+# ecsas.air.distdata <- read_rds(file = file.path(GenDataDir,"ECSAS_air_the_data.rds"))
+```
+
+# Create final data
+
+```{r combine_all_data}
+# Create combined ship/air study.area
+
+distdata <- rbind(ecsas.ship.distdata, ecsas.air.distdata) %>% 
+  write_rds(file = the.data.file)
+
+# Save shapefile
+distdata.sf <- distdata %>%
+  mutate(object = as.character(object)) %>%  # shapefile can't handle big ints
+  st_as_sf(
+    coords = c("LongStart", "LatStart"),
+    crs = 4326,
+    remove = FALSE
+  ) %>%
   st_write(
     dsn = ShapeDir,
-    layer = "ECSAS_ship_dat_prelm.shp",
+    layer = "ECSAS_distdata.shp",
     driver = "ESRI Shapefile",
     delete_layer = TRUE
   )
 
-  
+# load(the.data.file)
 ```
 
 
-## Create ECSAS ship "the.data" and save
+## Create study area and save
 
-Note includes both InTransect and NOT observations from stationary and moving
-vessels.
+Study area is just MCP of all points.
 
 ```{r ECSAS_ship_create_survey}
-# create.survey.data() wants study.area to exist so just make it the 100% MCP
-study.area <- ecsas.ship.dat.sf %>% 
-  mutate(ID = 1) %>% 
-  select(ID, geometry) %>% 
-  as_Spatial() %>% 
-  adehabitatHR::mcp(percent = 100) %>% 
-  as("sf")
+study.area <- distdata.sf %>%
+  mutate(ID = 1) %>%
+  select(ID, geometry) %>%
+  as_Spatial() %>%
+  adehabitatHR::mcp(percent = 100) %>%
+  as("sf") %>%
+  st_write(
+    dsn = ShapeDir,
+    layer = "study_area.shp",
+    driver = "ESRI Shapefile",
+    delete_layer = TRUE
+  )
 
-
-# Creating this just to get the distdata for ddf analysis
-ecsas.ship.the.data <-
-  create.survey.data(ecsas.ship.dat,
-                     dataset = "ECSAS",
-                     file.prefix = "ECSAS_ship",
-                     inproj = 4326,
-                     outproj = 4326,
-                     intransect.only = FALSE,
-                     saveshp = TRUE)
-
-# Summary
-summary(ecsas.ship.the.data$distdata)
-summary(ecsas.ship.the.data$watches)
-
-
-# save(ecsas.ship.the.data,
-#      file = file.path(GenDataDir, "ECSAS_ship_the_data.rda"))
-# load(file = file.path(GenDataDir, "ECSAS_ship_the_data.rda"))
-```
-
-
-# Create final data
-
-Remembering to set distance to 0 for any obs where it was NA. 
-
-```{r combine_all_data}
-the.data <- list()
-the.data$distdata <-  ecsas.ship.the.data$distdata %>%
-  mutate(distance = case_when(is.na(distance) ~ 0, TRUE ~ distance))
-the.data$watches <- ecsas.ship.the.data$watches
-the.data$transects <- NA
-
-saveRDS(the.data, file = the.data.file)
-saveRDS(study.area, study.area.file)
-# load(the.data.file)
+write_rds(study.area, study.area.file)
 ```
 
 
 # Plot watches
 
 ```{r plot_watches}
-dftools::plot_sf(the.data$watches, "LongStart", "LatStart")
+dftools::plot_sf_obj(distdata, "LongStart", "LatStart")
 ```
 
 
@@ -193,4 +270,3 @@ dftools::plot_sf(the.data$watches, "LongStart", "LatStart")
 ```{r}
 sessioninfo::session_info()
 ```
-
