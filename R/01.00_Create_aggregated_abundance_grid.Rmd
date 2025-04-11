@@ -9,6 +9,7 @@ editor_options:
 
 
 Aggregate observations to grid
+
 Rasterize all observations to the generic grid (summing all obs that
 occur in each grid cell). Convert the resulting raster to points. This only
 allows one value per grid cell. If I want multiple attributes I'll probably need
@@ -17,17 +18,18 @@ to convert the generic grid to polygon so each one can have multiple attributes.
 
 ```{r setup}
 source(here::here("R/analysis_settings.R"), echo = T)
-the.data <- readRDS(the.data.file)
-study.area <- readRDS(study.area.file)
-proj <- readRDS(proj.file)
-grid <- rast(file.path(RasterDir, "grid.tif"))
 ```
 
 
-# Get data
+# Get data and assign seasons
+
+Should assign seasons in Extract_data.Rmd
 
 ```{r get_data}
-studyarea.proj <- study.area %>% st_transform(proj)
+the.data <- readRDS(the.data.file)
+proj <- readRDS(proj.file)
+grid <- rast(file.path(RasterDir, "grid.tif"))
+studyarea.proj <- readRDS(study.area.file) %>% st_transform(proj)
 watches <- the.data$watches %>% 
   assign.season(seasons, datefield = "Date")
 ```
@@ -43,7 +45,6 @@ as "Seabirds" and "Waterbirds" in ECSAS, respectively.
 
 ```{r aggregate_to_raster}
 species <- c("Sbrd", "Wbrd", names(spec.grps))
-dewbug(agg_species_group)
 agg.data <- species %>%
   # Aggregate to raster cells
   map(\(grp) agg_species_group(grp, the.data$distdata, watches, grid)) %>%

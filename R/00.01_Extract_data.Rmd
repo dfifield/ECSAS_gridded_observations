@@ -67,7 +67,7 @@ ecsas.ship.dat <- ecsas.ship.dat %>%
   )
 
 ecsas.ship.watches <- ecsas.ship.dat %>% 
-  select(WatchID, LatStart, LongStart) %>% 
+  select(WatchID, LatStart, LongStart, Date) %>% 
   distinct()
 
 ecsas.ship.distdata <- ecsas.ship.dat %>%
@@ -137,7 +137,8 @@ ecsas.ship.distdata <- ecsas.ship.dat %>%
 summary(ecsas.ship.watches)
 summary(ecsas.ship.distdata)
 
-ecsas.ship.the.data <- list(distdata = obs, watches = watches)
+ecsas.ship.the.data <- list(distdata = ecsas.ship.distdata, 
+                            watches = ecsas.ship.watches)
 write_rds(ecsas.ship.the.data,
      file = file.path(GenDataDir, "ECSAS_ship_the_data.rds"))
 # ecsas.ship.the.data <- read_rds(file = file.path(GenDataDir,"ECSAS_ship_the_data.rds"))
@@ -245,7 +246,7 @@ dftools:::namesort(ecsas.air.dat.on.effort)
 ```{r ecsas_air_off_effort}
 ecsas.air.dat.off.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial off-effort data.xlsx")) %>%
   filter(StudyAreaName != "GenericPQ", # FlySwim %in% c("W", "F"),
-         DataSharing == 1) %>%
+         DataSharing == 1) %>% 
   select(
     AerialObsID,
     Alpha,
@@ -264,7 +265,7 @@ ecsas.air.dat.off.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial of
     ObsTime,
     Seabird,
     Waterbird
-  ) %>%
+  ) %>% 
   mutate(
     SeaState = NA,
     BlindWidth = NA,
@@ -273,7 +274,7 @@ ecsas.air.dat.off.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial of
     # obs don't have one
     WatchID = paste(
       "ECSAS_air_off_effort",
-      1:nrow(ecsas.air.dat.off.effort),
+      1:nrow(.),
       sep = "_"
     )
   ) %>% 
@@ -285,7 +286,11 @@ ecsas.air.dat.off.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial of
 
 dftools:::namesort(ecsas.air.dat.on.effort)
 dftools:::namesort(ecsas.air.dat.off.effort)
+```
 
+## Combine aerial on- and off-effort data
+
+```{r combine_ecsas_aerial}
 ecsas.air.distdata <- rbind(ecsas.air.dat.on.effort, ecsas.air.dat.off.effort) %>%
   rename(
     distbegin = dist_begin,
@@ -314,7 +319,7 @@ summary(ecsas.air.distdata)
 
 ecsas.air.the.data <- list(
   distdata = ecsas.air.distdata,
-  watches = ecsas.air.watches %>% select(WatchID, LatStart, LongStart)
+  watches = ecsas.air.watches %>% select(WatchID, LatStart, LongStart, Date)
 )
 
 write_rds(ecsas.air.the.data,
