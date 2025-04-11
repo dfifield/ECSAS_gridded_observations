@@ -12,7 +12,6 @@ editor_options:
 
 ```{r setup}
 source(here::here("R/analysis_settings.R"), echo = T)
-# load(studyAreaLoc)
 ```
 
 # Import Ship-based data
@@ -40,10 +39,39 @@ if (ECSAS.reextract) {
 }
 
 progs <- ECSAS.get.table(ecsas.path = ECSAS.Path, "lkpProgram")
-ecsas.ship.distdata <- ecsas.ship.dat %>%
+ecsas.ship.dat <- ecsas.ship.dat %>%
   left_join(progs, by = c("Program" = "ProgramID")) %>%
   dplyr::filter(
     Program %in% c(4, 6),
+    DataSharing == 1
+  ) %>%
+  mutate(
+    # SurveyType = "Ship",
+    # spec.grp = find.spec.grp(Alpha),
+    # InTransect = case_when(InTransect == -1 ~ TRUE, 
+    #                        InTransect == 0 ~ FALSE, 
+    #                        .default = NA),
+    # Distance = Distance / 1000,
+    # Windspeed = case_when(
+    #   is.na(Windspeed) &
+    #     !is.na(Windforce) ~ left_join(., beaufort_conversion, 
+    #                                   by = c("Windforce" = "beaufort"))$speed.kts,
+    #   TRUE ~ Windspeed
+    # ),
+    # Visibility = case_when(Visibility > 20 ~ 20, TRUE ~ Visibility),
+    # FlySwim = as.factor(toupper(FlySwim)),
+    # distbegin = NA_integer_,
+    # distend = NA_integer_,
+    # BlindWidth = NA,
+    WatchID = paste0("ECSAS_shp_", WatchID),
+  )
+
+ecsas.ship.watches <- ecsas.ship.dat %>% 
+  select(WatchID, LatStart, LongStart) %>% 
+  distinct()
+
+ecsas.ship.distdata <- ecsas.ship.dat %>%
+  dplyr::filter(
     !is.na(Count),
     !is.na(DistMeth),
     !is.na(FlockID),
@@ -75,6 +103,7 @@ ecsas.ship.distdata <- ecsas.ship.dat %>%
          size = Count,
          distance = Distance) %>%
   select(
+    WatchID,
     object,
     Alpha,
     Association,
@@ -104,30 +133,43 @@ ecsas.ship.distdata <- ecsas.ship.dat %>%
   droplevels
 
 
-# Check to make sure all rows have DistMeth
-stopifnot(all(!is.na(ecsas.ship.distdata$DistMeth)))
-
 # Summary
+summary(ecsas.ship.watches)
 summary(ecsas.ship.distdata)
 
-write_rds(ecsas.ship.distdata,
+ecsas.ship.the.data <- list(distdata = obs, watches = watches)
+write_rds(ecsas.ship.the.data,
      file = file.path(GenDataDir, "ECSAS_ship_the_data.rds"))
-# ecsas.ship.distdata <- read_rds(file = file.path(GenDataDir,"ECSAS_ship_the_data.rds"))
+# ecsas.ship.the.data <- read_rds(file = file.path(GenDataDir,"ECSAS_ship_the_data.rds"))
 ```
 
 # Import Aerial Data
 
-## Import ECSAS aerial data
+## Get ECSAS aerial watches
 
-```{r create_ecsas_air_watch_trans}
+``` {r ECSAS_aerial_watches}
+# This was created by copying ECSAS_aerial_watches.rda from Atlantic DSM
+# analysis and re-saving as an rds file.
+ecsas.air.watches <- read_rds(file = file.path(GenDataDir, "ECSAS_aerial_watches.rds"))
+```
+
+## Process ECSAS aerial on-effort data
+
+```{r ecsas_air_on_effort}
 # Import aerial data remove QC data for now since we have no positions for them.
-ecsas.air.dat.on.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial on-effort data.xlsx")) %>% 
-  filter(!is.na(AerialObsID),
-         StudyAreaName != "GenericPQ",
-         FlySwim %in% c("W", "F"),
-         DataSharing == 1)  %>%
+ecsas.air.dat.on.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial on-effort data.xlsx")) %>%
+  filter(
+    !is.na(AerialObsID),
+    StudyAreaName != "GenericPQ",
+    FlySwim %in% c("W", "F"),
+    !is.na(AerialObsID),
+    DataSharing == 1
+  )  %>%
   select(
     AerialObsID,
+    AerialTransectID,
+    StartDateTime,
+    EndDateTime,
     Alpha,
     Association,
     BlindWidth,
@@ -146,14 +188,63 @@ ecsas.air.dat.on.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial on-
     SeaState,
     Seabird,
     Waterbird
-  )
+  ) %>%
+  left_join(
+    select(
+      ecsas.air.watches,
+      WatchID,
+      StartTime,
+      EndTime,
+      LatStart,
+      LongStart
+    ),
+    join_by(between(ObsTime, StartTime, EndTime, bounds = "[)")),
+    relationship = "many-to-one"
+  ) %>%
+  mutate(Date = StartTime) %>%
+  select(-StartTime,
+         -EndTime,
+         -EndDateTime,
+         -StartDateTime,
+         -ObsLong,
+         -ObsLat)
 
 # 7128 records
+# 
 
-# Get off effort obs
+# The foregoing may leave obs that came at the last second of the last watch before an
+# off-effort break or end of transect with no matching transect because of the
+# bounds = "[)" arg. So match these up using bounds = "[]". Any still without a
+# matching watchid must have occurred during a pause/resume (since dbase doesn't
+# check for this yet) or on problem watches, or outside of transect (which
+# shouldn't happen), so filter these out.
+if (any(is.na(ecsas.air.dat.on.effort$WatchID))) {
+  unmatched <- filter(ecsas.air.dat.on.effort, is.na(WatchID)) %>% 
+    select(-WatchID, -LatStart, -LongStart) %>% 
+    left_join(select(ecsas.air.watches, WatchID, StartTime, EndTime,
+                     LatStart, LongStart),
+            join_by(between(ObsTime, StartTime, EndTime, bounds = "[]")),
+            relationship = "many-to-one") %>% 
+    filter(!is.na(WatchID)) %>% # drop off-effort or ones outside study area
+    select(-StartTime, -EndTime)
+  matched <- filter(ecsas.air.dat.on.effort, !is.na(WatchID))
+  ecsas.air.dat.on.effort <- rbind(matched, unmatched) %>% 
+    arrange(WatchID, ObsTime)
+}
+
+# No longer needed
+ecsas.air.dat.on.effort <- select(ecsas.air.dat.on.effort, -ObsTime)
+
+# 6579 rows 
+summary(ecsas.air.dat.on.effort)
+dftools:::namesort(ecsas.air.dat.on.effort)
+```
+
+## Process ECSAS aerial off-effort data
+
+```{r ecsas_air_off_effort}
 ecsas.air.dat.off.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial off-effort data.xlsx")) %>%
-  filter(StudyAreaName != "GenericPQ",
-         FlySwim %in% c("W", "F"),
+  filter(StudyAreaName != "GenericPQ", # FlySwim %in% c("W", "F"),
          DataSharing == 1) %>%
   select(
     AerialObsID,
@@ -174,52 +265,83 @@ ecsas.air.dat.off.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial of
     Seabird,
     Waterbird
   ) %>%
-  mutate(SeaState = NA, BlindWidth = NA)
+  mutate(
+    SeaState = NA,
+    BlindWidth = NA,
+    AerialTransectID = NA,
+    # Need a watchID to match other data, just make one up since off_effort
+    # obs don't have one
+    WatchID = paste(
+      "ECSAS_air_off_effort",
+      1:nrow(ecsas.air.dat.off.effort),
+      sep = "_"
+    )
+  ) %>% 
+  rename(LatStart = ObsLat,
+         LongStart = ObsLong,
+         Date = ObsTime)
 
 # 153 obs
 
+dftools:::namesort(ecsas.air.dat.on.effort)
+dftools:::namesort(ecsas.air.dat.off.effort)
+
 ecsas.air.distdata <- rbind(ecsas.air.dat.on.effort, ecsas.air.dat.off.effort) %>%
   rename(
-    LatStart = ObsLat,
-    LongStart = ObsLong,
     distbegin = dist_begin,
     distend = dist_end,
-    Date = ObsTime,
-    object = AerialObsID,
+    object = AerialObsID, #TODO:Possible to clash with on_effort AerialobsID??
     size = Count,
     distance = Distance_m
-  ) %>% 
+  ) %>%
   filter(!is.na(LatStart), !is.na(LongStart)) %>%  # Some off-effort have none
   mutate(
     SurveyType = "Air",
     DistType = "Perp.",
-    Seabird = -1,
     Swell = NA,
     Windspeed = NA,
     distbegin = distbegin / 1000,
     distend = distend / 1000,
     spec.grp = find.spec.grp(Alpha),
     Year = year(Date),
-    distance = case_when(is.na(distance) ~ 0, TRUE ~ distance)
-  ) 
+    # TODO: why?? Should leave as NA??
+    # distance = case_when(is.na(distance) ~ 0, TRUE ~ distance)
+  ) %>% 
+  select(-AerialTransectID)
 
+summary(ecsas.air.watches)
 summary(ecsas.air.distdata)
 
-write_rds(ecsas.air.distdata,
+ecsas.air.the.data <- list(
+  distdata = ecsas.air.distdata,
+  watches = ecsas.air.watches %>% select(WatchID, LatStart, LongStart)
+)
+
+write_rds(ecsas.air.the.data,
      file = file.path(GenDataDir, "ECSAS_air_the_data.rds"))
-# ecsas.air.distdata <- read_rds(file = file.path(GenDataDir,"ECSAS_air_the_data.rds"))
+# ecsas.air.the.data <- read_rds(file = file.path(GenDataDir,"ECSAS_air_the_data.rds"))
 ```
 
-# Create final data
+## Create final ECSAS data
 
-```{r combine_all_data}
+```{r ecsas_combine_all_data}
 # Create combined ship/air study.area
 
-distdata <- rbind(ecsas.ship.distdata, ecsas.air.distdata) %>% 
-  write_rds(file = the.data.file)
+the.data <- list(
+  distdata = rbind(ecsas.ship.the.data$distdata, ecsas.air.the.data$distdata),
+  watches = rbind(ecsas.ship.the.data$watches, ecsas.air.the.data$watches)
+)
+
+write_rds(the.data, file = the.data.file)
+# load(the.data.file)
+```
+
+## Save Shapefiles
+
+```{r save_shapefile}
 
 # Save shapefile
-distdata.sf <- distdata %>%
+the.data$distdata %>%
   mutate(object = as.character(object)) %>%  # shapefile can't handle big ints
   st_as_sf(
     coords = c("LongStart", "LatStart"),
@@ -233,16 +355,28 @@ distdata.sf <- distdata %>%
     delete_layer = TRUE
   )
 
-# load(the.data.file)
+watches.sf <- the.data$watches %>%
+  mutate(object = as.character(WatchID)) %>%  # shapefile can't handle big ints
+  st_as_sf(
+    coords = c("LongStart", "LatStart"),
+    crs = 4326,
+    remove = FALSE
+  ) %>%
+  st_write(
+    dsn = ShapeDir,
+    layer = "ECSAS_watches.shp",
+    driver = "ESRI Shapefile",
+    delete_layer = TRUE
+  )
 ```
 
 
-## Create study area and save
+# Create study area and save
 
 Study area is just MCP of all points.
 
-```{r ECSAS_ship_create_survey}
-study.area <- distdata.sf %>%
+```{r ECSAS_study_area}
+study.area <- watches.sf %>%
   mutate(ID = 1) %>%
   select(ID, geometry) %>%
   as_Spatial() %>%
@@ -262,7 +396,7 @@ write_rds(study.area, study.area.file)
 # Plot watches
 
 ```{r plot_watches}
-dftools::plot_sf_obj(distdata, "LongStart", "LatStart")
+dftools::plot_sf_obj(watches.sf, "LongStart", "LatStart")
 ```
 
 

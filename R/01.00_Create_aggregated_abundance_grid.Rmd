@@ -28,7 +28,7 @@ grid <- rast(file.path(RasterDir, "grid.tif"))
 
 ```{r get_data}
 studyarea.proj <- study.area %>% st_transform(proj)
-the.data <- the.data %>% 
+watches <- the.data$watches %>% 
   assign.season(seasons, datefield = "Date")
 ```
 
@@ -43,16 +43,16 @@ as "Seabirds" and "Waterbirds" in ECSAS, respectively.
 
 ```{r aggregate_to_raster}
 species <- c("Sbrd", "Wbrd", names(spec.grps))
-# debug(agg_species_group)
+dewbug(agg_species_group)
 agg.data <- species %>%
   # Aggregate to raster cells
-  map(\(grp) agg_species_group(grp, the.data, grid)) %>%
+  map(\(grp) agg_species_group(grp, the.data$distdata, watches, grid)) %>%
   setNames(species) %>%
   # Combine list of species (each with seasonal data) to single structure
   # for each season across all species
   combine_species() %>%
   save_seasonal_shapefiles()
 
-write_rds(agg.data, file.path(GenDataDir, "agg_data.rds"))
-# agg.data <- readRDS(file.path(GenDataDir, "agg.data.by.species.rds"))
+saveRDS(agg.data, file.path(GenDataDir, "agg_data.rds"))
+# agg.data <- readRDS(file.path(GenDataDir, "agg.data.by.species.rds")) 
 ```
