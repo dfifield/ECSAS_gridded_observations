@@ -54,9 +54,23 @@ land.remove.zeros <- gengrid - land.remove.ones
 # Turn the zeros into NA's
 gengrid <- ifel(land.remove.zeros == 0, NA, 1)
 
+# Save as a raster
 writeRaster(gengrid,
             filename = file.path(RasterDir, "grid.tif"),
             overwrite = TRUE)
+
+# Save as polygons - SLOOOOW
+if (save.grid.polygons) {
+  gengrid %>%
+    as.polygons(aggregate = FALSE, values = FALSE) %>%
+    writeVector(filename = file.path(
+      Shapedir,
+      "grid.shp",
+      filetype = "ESRI Shapefile",
+      overwrite = TRUE
+    ))
+}
+
 plot(gengrid, main = "Study area")
 ```
 

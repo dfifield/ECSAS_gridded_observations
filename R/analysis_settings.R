@@ -53,6 +53,7 @@ options(dplyr.summarise.inform = FALSE)
 
 # Data options
 ECSAS.reextract <- FALSE # Requery the database or use existing saved data.
+save.grid.polygons <- FALSE # Takes hours to save!!
 aerial.watch.len <- 30 # seconds
 
 spec.grps <- list(
