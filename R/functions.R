@@ -98,6 +98,7 @@ check.problem.data = function(alldat,
 create.survey.data <- function(raw.dat = NULL,
                                dataset = NULL,
                                file.prefix = NULL,
+                               study.area = NULL,
                                inproj = 4326,
                                outproj = segProj,
                                saveshp = TRUE,
@@ -2819,7 +2820,7 @@ do.kde <- function(dat,
     )
   })
 
-  saveRDS(polys,
+  write_Rds(polys,
           # file = file.path(share_drive, "ECSAS", paste0(filename, ".RDS")))
           file = file.path("raw-data", paste0(filename, ".RDS")))
   polys

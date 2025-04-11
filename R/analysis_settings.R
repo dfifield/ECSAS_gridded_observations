@@ -19,19 +19,14 @@ library(dsm)
 library(knitr)
 library(sp)
 library(viridis)
-library(doSNOW)
 library(stringr)
 library(ggplot2)
 library(here)
-library(furrr)
 library(ECSASconnect)
 library(rmarkdown)
-library(leaflet)
-library(leafem)
 library(htmltools)
 library(sf)
 library(checkmate)
-library(rmapshaper)
 library(dftools)
 
 # stop summarise's new habit of telling us it has dropped the last grouping level (its default behaviour)
@@ -58,6 +53,8 @@ options(dplyr.summarise.inform = FALSE)
 
 # Data options
 ECSAS.reextract <- FALSE # Requery the database or use existing saved data.
+save.grid.polygons <- FALSE # Takes hours to save!!
+aerial.watch.len <- 30 # seconds
 
 spec.grps <- list(
   ATPU = "ATPU",

@@ -19,10 +19,10 @@ Create an Albers Equal Area projection with params customized to the locations
 of the data and save it.
 
 ```{r pick_proj}
-proj <- dftools::pick_aea_projection(the.data$watches, 
+proj <- dftools::pick_aea_projection(the.data, 
                                      latcol = "LatStart",
                                      longcol = "LongStart")
-saveRDS(proj, file = proj.file)
+write_rds(proj, file = proj.file)
 ```
 
 
@@ -39,8 +39,8 @@ gengrid <- studyarea.proj %>%
   ext %>% 
   rast(resolution = 1000, crs = proj) %>%  # create rectangular raster
   setValues(rep(NA, length(.))) %>%            # set all cells to NA
-  rasterize(studyarea.proj, ., field = 1, background = NA) %>% # set cells to 1
-  writeRaster(filename = file.path(RasterDir, "grid.tif"), overwrite = TRUE)
+  rasterize(studyarea.proj, ., field = 1, background = NA) # set cells to 1
+  # writeRaster(filename = file.path(RasterDir, "grid.tif"), overwrite = TRUE)
 
 # Remove the portion of the study area that is land
 land.remove <- mask(gengrid, vect(coast %>% st_transform(proj)))
@@ -54,10 +54,23 @@ land.remove.zeros <- gengrid - land.remove.ones
 # Turn the zeros into NA's
 gengrid <- ifel(land.remove.zeros == 0, NA, 1)
 
-saveRDS(gengrid, file = grid.file)
+# Save as a raster
 writeRaster(gengrid,
             filename = file.path(RasterDir, "grid.tif"),
             overwrite = TRUE)
+
+# Save as polygons - SLOOOOW
+if (save.grid.polygons) {
+  gengrid %>%
+    as.polygons(aggregate = FALSE, values = FALSE) %>%
+    writeVector(filename = file.path(
+      Shapedir,
+      "grid.shp",
+      filetype = "ESRI Shapefile",
+      overwrite = TRUE
+    ))
+}
+
 plot(gengrid, main = "Study area")
 ```
 
