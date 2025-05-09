@@ -5,6 +5,7 @@
 *.rda
 *.mdb
 /GIS/Shapefiles
+/GIS/Rasters
 *.RDS
 *.tif
 /Results/Sent 2025-04-07

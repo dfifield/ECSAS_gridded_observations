@@ -31,11 +31,6 @@ generate_html_species_list(spec.grps[idx])
 ```
 
 
-```{r grp, echo=FALSE}
-
-```
-
-
 ## Group summary table
 
 Summary for species groups of interest.
