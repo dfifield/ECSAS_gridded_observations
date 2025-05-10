@@ -6,6 +6,7 @@
 *.mdb
 /GIS/Shapefiles
 /GIS/Rasters
+/GIS/*.gdb/
 *.RDS
 *.tif
 /Results/Sent 2025-04-07

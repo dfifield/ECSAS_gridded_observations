@@ -381,6 +381,7 @@ watches.sf <- the.data$watches %>%
 Study area is just MCP of all points.
 
 ```{r ECSAS_study_area}
+if (SubProject == "All_ECSAS"){
 study.area <- watches.sf %>%
   mutate(ID = 1) %>%
   select(ID, geometry) %>%
@@ -393,6 +394,11 @@ study.area <- watches.sf %>%
     driver = "ESRI Shapefile",
     delete_layer = TRUE
   )
+} else if (SubProject == "Atl_OPP") {
+  study.area <- st_read(file.path(GISDir, "Tile_Grid_5km.gdb"), 
+                          layer = "Tile_Grid_5km")
+} else 
+  stop("00.01_Extract_data.Rmd: Unknown SubProject ", SubProject)
 
 write_rds(study.area, study.area.file)
 ```

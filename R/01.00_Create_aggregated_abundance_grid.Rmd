@@ -49,8 +49,8 @@ agg.data <- species %>%
   # Aggregate to raster cells
   map(\(grp) agg_species_group(grp, the.data$distdata, watches, grid)) %>%
   setNames(species) %>%
-  # Combine list of species (each with seasonal data) to single structure
-  # for each season across all species
+  # Combine list of species (each with its own seasonally aggregated data) to a
+  # single structure for each season across all species
   combine_species() %>%
   save_seasonal_shapefiles()
 

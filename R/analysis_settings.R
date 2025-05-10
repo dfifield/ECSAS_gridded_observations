@@ -29,6 +29,10 @@ library(sf)
 library(checkmate)
 library(dftools)
 
+SubProject <- "Atl_OPP" # Atlantic OPP IMRP/response study area
+# SubProject <- "All_ECSAS" # Entire ECSAS dataset including both NL and NS
+
+
 # stop summarise's new habit of telling us it has dropped the last grouping level (its default behaviour)
 options(dplyr.summarise.inform = FALSE)
 
@@ -56,65 +60,126 @@ ECSAS.reextract <- FALSE # Requery the database or use existing saved data.
 save.grid.polygons <- FALSE # Takes hours to save!!
 aerial.watch.len <- 30 # seconds
 
-spec.grps <- list(
-  ATPU = "ATPU",
-  BLKI = "BLKI",
-  COEI = "COEI",
-  KIEI = "KIEI",
-  DOVE = "DOVE",
-  Gull = c(
-    "BHGU",
-    "BOGU",
-    "BTGU",
-    "CAGU",
-    "FRGU",
-    "GBBG",
-    "GLGU",
-    "GWGU",
-    "HEEG",
-    "HERG",
-    "HYGU",
-    "ICGU",
-    "IVGU",
-    "KUGU",
-    "LAGU",
-    "LBBG",
-    "LIGU",
-    "MEGU",
-    "RBGU",
-    "ROGU",
-    "SAGU",
-    "SBGU",
-    "SMGU",
-    "THGU",
-    "UNGU",
-    "UNLA",
-    "UNWW",
-    "VEGU",
-    "WEGU",
-    "YLGU"
-  ),
-  # LESP = "LESP",
-  Murr = c("COMU", "TBMU", "UNMU"),
-  NOFU = "NOFU",
-  NOGA = "NOGA",
-  Ptrl = c("LESP", "WISP", "UNSP"),
-  RAZO = "RAZO",
-  Swtr = c(
-    "AUSH",
-    "BASH",
-    "COSH",
-    "GRSH",
-    "MASH",
-    "SMSH",
-    "SOSH",
-    "TOSH",
-    "UNCS",
-    "UNSH",
-    "YESH"
-  )
-)
 
+if (SubProject == "All_ECSAS") {
+  spec.grps <- list(
+    ATPU = "ATPU",
+    BLKI = "BLKI",
+    COEI = "COEI",
+    KIEI = "KIEI",
+    DOVE = "DOVE",
+    Gull = c(
+      "BHGU",
+      "BOGU",
+      "BTGU",
+      "CAGU",
+      "FRGU",
+      "GBBG",
+      "GLGU",
+      "GWGU",
+      "HEEG",
+      "HERG",
+      "HYGU",
+      "ICGU",
+      "IVGU",
+      "KUGU",
+      "LAGU",
+      "LBBG",
+      "LIGU",
+      "MEGU",
+      "RBGU",
+      "ROGU",
+      "SAGU",
+      "SBGU",
+      "SMGU",
+      "THGU",
+      "UNGU",
+      "UNLA",
+      "UNWW",
+      "VEGU",
+      "WEGU",
+      "YLGU"
+    ),
+    # LESP = "LESP",
+    Murr = c("COMU", "TBMU", "UNMU"),
+    NOFU = "NOFU",
+    NOGA = "NOGA",
+    Ptrl = c("LESP", "WISP", "UNSP"),
+    RAZO = "RAZO",
+    Swtr = c(
+      "AUSH",
+      "BASH",
+      "COSH",
+      "GRSH",
+      "MASH",
+      "SMSH",
+      "SOSH",
+      "TOSH",
+      "UNCS",
+      "UNSH",
+      "YESH"
+    )
+  )
+} else if (SubProject == "Atl_OPP"){
+  spec.grps <- list(
+    ATPU = "ATPU",
+    BLKI = "BLKI",
+    COEI = "COEI",
+    DOVE = "DOVE",
+    Gull = c(
+      "BHGU",
+      "BOGU",
+      "BTGU",
+      "CAGU",
+      "FRGU",
+      "GBBG",
+      "GLGU",
+      "GWGU",
+      "HEEG",
+      "HERG",
+      "HYGU",
+      "ICGU",
+      "IVGU",
+      "KUGU",
+      "LAGU",
+      "LBBG",
+      "LIGU",
+      "MEGU",
+      "RBGU",
+      "ROGU",
+      "SAGU",
+      "SBGU",
+      "SMGU",
+      "THGU",
+      "UNGU",
+      "UNLA",
+      "UNWW",
+      "VEGU",
+      "WEGU",
+      "YLGU"
+    ),
+    # LESP = "LESP",
+    Murr = c("COMU", "TBMU", "UNMU"),
+    NOFU = "NOFU",
+    NOGA = "NOGA",
+    Ptrl = c("LESP", "WISP", "UNSP"),
+    RAZO = "RAZO",
+    Swtr = c(
+      "AUSH",
+      "BASH",
+      "COSH",
+      "GRSH",
+      "MASH",
+      "SMSH",
+      "SOSH",
+      "TOSH",
+      "UNCS",
+      "UNSH",
+      "YESH"
+    )
+  )
+} else
+  stop("analysis_settings.R: unknown SubProject ", SubProject)
 spec.grps.names <- list(Gull = "Gulls", Murr = "Murres", Ptrl = "Storm-Petrels",
                         Swtr = "Shearwaters")
 

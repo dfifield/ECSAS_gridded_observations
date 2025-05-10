@@ -2831,6 +2831,10 @@ do.kde <- function(dat,
 # dat is a list of species where each species element is a list of seasons
 # and each season is a dataframe for that species-season combo.
 combine_species <- function(dat) {
+  # Prevent message from printing on next line before dat has been created
+  # by a function earlier in a pipe.
+  force(dat)
+
   message("Combining species")
   # Check that all lists have the same names for the elements
   if (any(sapply(dat, function(x) !all(names(x) == names(dat[[1]]))))) {

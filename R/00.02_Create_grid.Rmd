@@ -1,5 +1,5 @@
 ---
-title: "Create 1x1 km grid"
+title: "Create grid"
 author: "Dave Fifield, Allison Patterson"
 date: "`r Sys.Date()`"
 output: html_document
@@ -13,34 +13,64 @@ the.data <- readRDS(the.data.file)
 study.area <- readRDS(study.area.file)
 ```
 
-# Create projection and save
+# Create grid for Atl_OPP
+Create grid to match the one in use by CWS Atl Shiny app
 
-Create an Albers Equal Area projection with params customized to the locations
-of the data and save it.
+```{r eval=(SubProject == "Atl_OPP")}
+coast <- rnaturalearth::ne_countries(scale = "medium", returnclass = 'sf')
 
-```{r pick_proj}
-proj <- dftools::pick_aea_projection(the.data, 
-                                     latcol = "LatStart",
-                                     longcol = "LongStart")
+# Projection is predefined by the study area given to us.
+proj <- st_crs(studyarea.proj)$wkt
 write_rds(proj, file = proj.file)
+
+# generate raster covering the study area
+gengrid <- studyarea.proj %>% 
+  rast(resolution = 5000, crs = proj) %>% # create raster
+  rasterize(studyarea.proj, ., field = 1, background = NA) # set cells to 1
+
+# Remove the portion of the study area that is land
+land.remove <- mask(gengrid, vect(coast %>% st_transform(st_crs(proj))))
+
+# Raster with 1's where we want to remove
+land.remove.ones <- ifel(is.na(land.remove),0, 1)
+
+# Subtract - now the areas we want to remove are zeros
+land.remove.zeros <- gengrid - land.remove.ones
+
+# Turn the zeros into NA's
+gengrid <- ifel(land.remove.zeros == 0, NA, 1)
+
+# Save as a raster
+writeRaster(gengrid,
+            filename = file.path(RasterDir, "grid.tif"),
+            overwrite = TRUE)
+
+plot(gengrid, main = "Study area")
 ```
 
 
-# Create grid
+# Create grid for all CWS
 
 Create 1x1 km grid covering the study area and fill the cells with value 1.
-```{r create_grid}
+```{r create_grid, eval=(SubProject == "All_ECSAS")}
+
+# Create an Albers Equal Area projection with params customized to the locations
+# of the data and save it.
+
+# We use the data to figure out a good projection
+proj <- dftools::pick_aea_projection(the.data$distdata, 
+                                     latcol = "LatStart",
+                                     longcol = "LongStart")
+write_rds(proj, file = proj.file)
+
 # Study.area is in WGS84
 studyarea.proj <- st_transform(study.area, proj)
 coast <- rnaturalearth::ne_countries(scale = "medium", returnclass = 'sf')
 
 # generate raster covering the study area
 gengrid <- studyarea.proj %>%
-  ext %>% 
   rast(resolution = 1000, crs = proj) %>%  # create rectangular raster
-  setValues(rep(NA, length(.))) %>%            # set all cells to NA
   rasterize(studyarea.proj, ., field = 1, background = NA) # set cells to 1
-  # writeRaster(filename = file.path(RasterDir, "grid.tif"), overwrite = TRUE)
 
 # Remove the portion of the study area that is land
 land.remove <- mask(gengrid, vect(coast %>% st_transform(proj)))
