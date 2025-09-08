@@ -8,11 +8,15 @@ Aggregate observations to grid Rasterize all observations to the generic grid
 points. This only allows one value per grid cell. If I want multiple attributes
 I'll probably need to convert the generic grid to polygon so each one can have
 multiple attributes.
+
 ```{r setup}
 source(here::here("R/analysis_settings.R"), echo = T)
 ```
 
-# Get data and assign seasons Should assign seasons in Extract_data.Rmd
+# Get data and assign seasons
+
+Should assign seasons in Extract_data.Rmd
+
 ```{r get_data}
 the.data <- readRDS(the.data.file)
 proj <- readRDS(proj.file)
@@ -22,10 +26,13 @@ watches <- the.data$watches %>%
   assign.season(seasons, datefield = "Date")
 ```
 
-# Aggregate observations to grid cell on a seasonal basis combining
-Across all species of interest. Includes two pseudo-species, SBRD and WBRD,
+# Aggregate
+
+Aggregate observations to grid cell on a seasonal basis combining
+across all species of interest. Includes two pseudo-species, SBRD and WBRD,
 which include all species marked as "Seabirds" and "Waterbirds" in ECSAS,
 respectively.
+
 ```{r aggregate_to_raster}
 species <- c("Sbrd", "Wbrd", names(spec.grps))
 agg.data <- species %>%
