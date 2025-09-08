@@ -14,14 +14,63 @@ study.area <- readRDS(study.area.file)
 ```
 
 # Create grid for Atl_OPP
-Create grid to match the one in use by CWS Atl Shiny app
+Create grid of 1 km x 1 km to fit inside the 5 km x 5 km one in use by CWS Atl 
 
 ```{r eval=(SubProject == "Atl_OPP")}
 coast <- rnaturalearth::ne_countries(scale = "medium", returnclass = 'sf')
 
 # Projection is predefined by the study area given to us.
-proj <- st_crs(studyarea.proj)$wkt
+proj <- st_crs(study.area)$wkt
 write_rds(proj, file = proj.file)
+
+# sub-sample study.area for testing
+# study.area <- study.area[1:1000,]
+
+# Create union for extent
+extent <- st_union(study.area)
+
+# Build 1 km grid aligned to 5 km grid
+grid_1km <- st_make_grid(
+  extent,
+  cellsize = c(1000, 1000),  # 1 km resolution
+  what = "polygons",
+  square = TRUE
+)
+
+# convert to sf object
+grid_1km_sf <- st_sf(geometry = grid_1km, crs = st_crs(study.area))
+saveRDS(grid_1km_sf, file = file.path(GenDataDir, "grid_1km_sf.rds"), 
+        compress = FALSE)
+
+# Write to file if needed
+st_write(grid_1km_sf,
+  dsn = ShapeDir,
+  layer = "grid_1km_no_ETID.shp",
+  driver = "ESRI Shapefile",
+  delete_layer = TRUE
+)
+
+# Clip to original extent, just in case - takes forever
+# grid_1km_sf <- st_intersection(grid_1km_sf, extent)
+
+# ---- Tag 1 km cells with 5 km ET_ID ----
+grid_1km_tagged <- st_join(grid_1km_sf, study.area["ET_ID"], 
+                           join = st_within) 
+
+# Remove any that were outside the extent of original 5km grid
+# since there will be one extra column in the east.
+grid_1km_tagged <- filter(grid_1km_tagged, !is.na(ET_ID))
+
+# Write to file
+st_write(grid_1km_tagged,
+  dsn = ShapeDir,
+  layer = "grid_1km_with_ETID.shp",
+  driver = "ESRI Shapefile",
+  delete_layer = TRUE
+)
+
+XXXX start here XXXX
+
 
 # generate raster covering the study area
 gengrid <- studyarea.proj %>% 

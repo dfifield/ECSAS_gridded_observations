@@ -395,8 +395,7 @@ study.area <- watches.sf %>%
     delete_layer = TRUE
   )
 } else if (SubProject == "Atl_OPP") {
-  study.area <- st_read(file.path(GISDir, "Tile_Grid_5km.gdb"), 
-                          layer = "Tile_Grid_5km")
+  study.area <- st_read(file.path(ShapeDir, "GRID_5km.shp"))
 } else 
   stop("00.01_Extract_data.Rmd: Unknown SubProject ", SubProject)
 
