@@ -50,7 +50,7 @@ options(dplyr.summarise.inform = FALSE)
 # Data locations
 # ECSAS database location
 (ECSAS.Path <- file.path(RawDataDir, "Master_ECSAS_v_3.73.mdb"))
-(the.data.file <- file.path(GenDataDir, "ECSAS_ship_the_data.rds"))
+(the.data.file <- file.path(GenDataDir, "ECSAS_the_data.rds"))
 (study.area.file <- file.path(GenDataDir, "study_area.rds"))
 (proj.file <- file.path(GenDataDir, "projection.rds"))
 (grid.file <- file.path(GenDataDir, "grid.rds"))

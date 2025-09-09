@@ -51,25 +51,14 @@ st_write(grid_1km_tagged,
   delete_layer = TRUE
 )
 
-XXXX start here XXXX
+# Convert sf to SpatVector
+grid_vect <- vect(grid_1km_tagged)
 
+# Create an empty raster template 
+r <- rast(grid_vect, res = 1000, crs = proj)
 
-# generate raster covering the study area
-gengrid <- studyarea.proj %>% 
-  rast(resolution = 5000, crs = proj) %>% # create raster
-  rasterize(studyarea.proj, ., field = 1, background = NA) # set cells to 1
-
-# Remove the portion of the study area that is land
-land.remove <- mask(gengrid, vect(coast %>% st_transform(st_crs(proj))))
-
-# Raster with 1's where we want to remove
-land.remove.ones <- ifel(is.na(land.remove),0, 1)
-
-# Subtract - now the areas we want to remove are zeros
-land.remove.zeros <- gengrid - land.remove.ones
-
-# Turn the zeros into NA's
-gengrid <- ifel(land.remove.zeros == 0, NA, 1)
+# Rasterize: fill with an attribute column, e.g. AREA
+gengrid <- rasterize(grid_vect, r, field = "ID")
 
 # Save as a raster
 writeRaster(gengrid,
@@ -77,6 +66,33 @@ writeRaster(gengrid,
             overwrite = TRUE)
 
 plot(gengrid, main = "Study area")
+
+# old code
+if (FALSE) {
+  # generate raster covering the study area
+  gengrid <- studyarea.proj %>% 
+  rast(resolution = 5000, crs = proj) %>% # create raster
+  rasterize(studyarea.proj, ., field = 1, background = NA) # set cells to 1
+
+  # Remove the portion of the study area that is land
+  land.remove <- mask(gengrid, vect(coast %>% st_transform(st_crs(proj))))
+  
+  # Raster with 1's where we want to remove
+  land.remove.ones <- ifel(is.na(land.remove), 0, 1)
+  
+  # Subtract - now the areas we want to remove are zeros
+  land.remove.zeros <- gengrid - land.remove.ones
+  
+  # Turn the zeros into NA's
+  gengrid <- ifel(land.remove.zeros == 0, NA, 1)
+  
+  # Save as a raster
+  writeRaster(gengrid,
+              filename = file.path(RasterDir, "grid.tif"),
+              overwrite = TRUE)
+  
+  plot(gengrid, main = "Study area")
+}
 ```
 
 
