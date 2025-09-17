@@ -2541,10 +2541,11 @@ do.env.covar <- function(env_covar_spec,
 # time.period - character string defining name of time.period the data is for.
 #     Typically "year_round, "Spring", "Summer", "Fall", or "Winter". Used to
 #     name the resulting shapefile
-agg.by.grid <- function(obs,
+agg_by_grid <- function(obs,
                         obs.name,
                         watches,
                         grid,
+                        idgrid,
                         time.period,
                         save.shapefile = FALSE,
                         save.RDS = FALSE) {
@@ -2554,16 +2555,41 @@ agg.by.grid <- function(obs,
   # Join the watch and obs data
   dat <- watches %>%
     mutate(year = year(Date)) %>%
-    left_join(obs, by = "WatchID")
+    left_join(obs, by = "WatchID") %>%
+    # Deal with watches with no location (e.g., aerial off-effort obs)
+    # and take the location from the obs.
+    mutate(LatStart = case_when(is.na(LatStart.x) | is.na(LongStart.x) ~ LatStart.y,
+                                .default = LatStart.x),
+           LongStart = case_when(is.na(LongStart.x) | is.na(LongStart.x) ~ LongStart.y,
+                                .default = LongStart.x),
+           year = case_when(is.na(Date.x) ~ year(Date.y), .default = year(Date.x))
+           )
+
+  # Make sure nothing went wonky by checking that no  watches have more than
+  # one unique set of lat/longs.
+  probs <- dat %>%
+    group_by(WatchID) %>%
+    filter(n_distinct(LatStart, LongStart) > 1) %>%
+    ungroup() %>%
+    summarise(count = n()) %>%
+    pull(count)
+  stopifnot(probs == 0)
 
   # sum number of birds and number of obs by watch.
   # Set tot_size and n_obs to 0 for watches with no obs.
   agg.data <- dat %>%
     group_by(WatchID) %>%
-    summarise(year = unique(year), nbirds = sum(size), n_obs = n()) %>%
-    mutate(nbirds = case_when(is.na(nbirds) ~ 0, .default = nbirds),
-           n_obs = case_when(nbirds == 0 ~ 0, .default = n_obs)) %>%
-    left_join(select(watches, WatchID, LatStart, LongStart), by = "WatchID") %>%
+    summarise(year = unique(year),
+              nbirds = sum(size),
+              n_obs = n(),
+              LatStart = first(LatStart),
+              LongStart = first(LongStart),
+              ) %>%
+    mutate(
+      nbirds = case_when(is.na(nbirds) ~ 0, .default = nbirds),
+      n_obs = case_when(nbirds == 0 ~ 0, .default = n_obs),
+      obs_year = case_when(nbirds != 0 ~ year, .default = NA),
+    ) %>%
     st_as_sf(
       coords = c("LongStart", "LatStart"),
       crs = st_crs("EPSG:4326"),
@@ -2575,13 +2601,30 @@ agg.by.grid <- function(obs,
   ### NOTE: choose final field names that will be shapefile friendly
   ### when combined with 4-letter species codes.
 
-  # pack years into a single number (product of primes) for aggregating to
-  # raster and then unpack as a point object.
-  years <- rasterize(agg.data, grid, field = "year", fun = encode_years) %>%
+  # Add a column for survey years once for each cell (not once for each species)
+  # thus the check or obs.name.Encode_years() packs years into a single bitmask
+  # for aggregating to raster and then unpack as a point object.
+  if (obs.name == "Sbrd") {
+    surv_yrs <- rasterize(agg.data, grid, field = "year", fun = encode_years) %>%
+      as.points() %>%
+      st_as_sf() %>%
+      mutate(surv_yrs = vec_decode_years(year)) %>%
+      select(-year)
+
+    # Get the value of the ET_ID from grid at each aggregated point.
+    big_cell_ids <- terra::extract(grid, surv_yrs) %>%
+      select(-ID)
+
+    # Get the value of the ET_ID from grid at each aggregated point.
+    small_cell_ids <- terra::extract(idgrid, surv_yrs) %>%
+      select(2)
+  }
+
+  obs_yrs <- rasterize(agg.data, grid, field = "obs_year", fun = encode_years) %>%
     as.points() %>%
     st_as_sf() %>%
-    mutate(!!paste0(obs.name, "_yr") := decode_years(year)) %>%
-    select(-year)
+    mutate(!!paste0(obs.name, "_yrs") := vec_decode_years(obs_year)) %>%
+    select(-obs_year)
 
   # rasterize nbird summing all points that fall in each cell and convert
   # to points
@@ -2596,26 +2639,36 @@ agg.by.grid <- function(obs,
     as.points() %>%
     st_as_sf() %>%
     mutate(sum = as.integer(sum)) %>%
-    rename(!!paste0(obs.name, "_n") := sum)
+    rename(!!paste0(obs.name, "_obs") := sum)
 
-  # combine and rename columns
-  agg.data.point <- nbirds %>%
-    cbind(nobs %>% st_drop_geometry(),
-          years %>% st_drop_geometry()
-    )
+
+  # Combine columns. Surv_yrs gives what years a cell was surveyed and is
+  # only computed for the "Sbrd" grp. Likewise for cell_ids.
+  if (obs.name == "Sbrd") {
+    agg.data.point <- cbind(surv_yrs,
+                            nbirds %>% st_drop_geometry(),
+                            nobs %>% st_drop_geometry(),
+                            obs_yrs %>% st_drop_geometry(),
+                            small_cell_ids,
+                            big_cell_ids) %>%
+      select(ID, ET_ID, everything()) # Put ET_ID first
+  } else {
+    agg.data.point <- cbind(nbirds,
+                            nobs %>% st_drop_geometry(),
+                            obs_yrs %>% st_drop_geometry())
+  }
 
   # Save
   filename <- paste("ECSAS", obs.name, "abundance", time.period, sep = "_")
 
-  if (save.shapefile)
-    st_write(
-      agg.data.point,
-      # dsn = file.path(share_drive, "../products/shapefiles"),
-      dsn = ShapeDir,
-      layer = filename,
-      driver = "ESRI Shapefile",
-      delete_layer = T
-    )
+  # if (save.shapefile)
+  #   st_write(
+  #     agg.data.point,
+  #     dsn = ShapeDir,
+  #     layer = filename,
+  #     driver = "ESRI Shapefile",
+  #     delete_layer = T
+  #   )
 
   if (save.RDS)
     saveRDS(agg.data.point,
@@ -2624,78 +2677,65 @@ agg.by.grid <- function(obs,
   invisible(agg.data.point)
 }
 
-# Encode a vector of years into a single integer by collapsing the 4-digit years
-# NOTE - this assumes all years >=  base and < base + 1000 (since decoding uses)
-# the list of the first 1000 primes.
-#
-# Works by subtracting base from each unique year and adding 1 to get an index into
-# the list of nth prime numbers. Then multiply these prime numbers together
-# to get the answer. To decode simply get the prime factors of the number
-# and use them to figure out what position (ie index) they are in the
-# list of the first 1000 primes. Then un-standardize the index to recover the year.
-# E.g. years = c(2020, 2005)
-#   subtracting 2000 and adding 1 gives c(21, 6) therefore prms is a vector
-#   containing the 21st and 6th primes (ie 73 and 13).
-#   - multiplying these gives ans == 949
-encode_years <- function(years, base = 2000){
-  yrs <- unique(years)
-
-  # standardize to 1 == base, 2 == base + 1, etc and use as index to choose
-  # primes
-  prms <- ((na.omit(yrs) - base) + 1) %>%
-    primes::nth_prime() %>%
-    as.numeric()
-
-  # multiply primes together to get a single number. Easy to recover
-  # the primes later since there is only 1 prime factorization of a number
-  # resulting from mutliply all primes.
-  ans <- Reduce(`*`, prms)
-
-  # Just in case something funky has gone on
-  if (is.na(ans) || is.null(ans))
+# Encode a vector of years into a single integer by collapsing to a bitmask
+encode_years <- function(years, base_year = 2000) {
+  # make sure we have some non-NA years. Years can have NAs if we are being
+  # called to encode years of observation of a given species but there were no
+  # obs for the given year(s).
+  years <-as.integer(na.omit(years))
+  if (length(years) == 0)
     return(0)
 
-  ans
+  offsets <- years - base_year
+
+  if (any(offsets < 0)) {
+    stop("Base year must be smaller than all years.")
+  }
+
+  bitmask <- sum(2^(offsets))
+  return(bitmask)
+}
+
+# Decode a single bitmask of years and return as a comma separate string
+# decode_years <- function(bitmask, base_year = 2000) {
+#   # find which bits are set
+#   offsets <- which(intToBits(bitmask) == 1L) - 1L
+#   years <- paste(offsets + base_year, collapse = ", ")
+#   return(years)
+# }
+
+decode_years <- function(bitmask, base_year = 2000) {
+  # No years to decode
+  if (bitmask == 0)
+    return("NA")
+
+  # Convert to integer64 to avoid overflow
+  bm <- bit64::as.integer64(bitmask)
+
+  years <- c()
+  offset <- bit64::as.integer64(0)
+  one <- bit64::as.integer64(1)
+
+  while (bm > 0) {
+    if (bit64::as.integer64(bm %% 2) == 1) {
+      years <- c(years, as.integer(offset) + base_year)
+    }
+    bm <- bm %/% 2
+    offset <- offset + 1
+  }
+
+  paste(years, collapse = ", ")
 }
 
 
-# Create a vectorized version of gmp::factorize for use in decode_years
-factorize.vec <- Vectorize(gmp::factorize)
+vec_decode_years <- Vectorize(decode_years)
 
-# Convert number representing encoded years back to years
-# Uses prime_factorization to get the prime factors of num and then finds
-# their indices in the first 1000 primes then unstandardizes by subracting 1
-# and adding base.
-# E.g. num = 949
-#   prime factors are 73 and 13
-#   these are the 21st and 6th primes
-#   unstandardizing recovers 2020 and 2005
-#
-# For datapoints with many years the value of num was too big for
-# primes::prime_factors() to handle, so I had to switch to using
-# a vectorized verseion of gmp::factorize()
-#
-# Return a character where each element is a comma separated string of years
-decode_years <- function(num, base = 2000){
-
-    zero.indices <- num == 0
-    res <- vector("character", length(num))
-    yrs <- num[!zero.indices] %>%
-      factorize.vec() %>%
-      map(\(x) match(x, primes::primes) - 1 + base) %>%
-      map_chr(\(x) paste(x, collapse = ", "))
-
-    # Just in case
-    res[zero.indices] <- NA
-    res[!zero.indices] <- yrs
-    res
-}
 
 # Aggregate observations dat on watches for a particular taxa (grp) to
 # the raster (grid) both seasonally and year-round. Returns a list of
 # (typically) 5 sf point objects: 1 for year-round and one each for the
 # (tyipcally) 4 seasons.
-agg_species_group <- function(grp, dat, watches, grid){
+agg_species_group <- function(grp, dat, watches, grid, idgrid){
   # get species of interest
   if (grp == "Sbrd")
     dat.filt <- filter(the.data$distdata, Seabird == -1)
@@ -2705,17 +2745,18 @@ agg_species_group <- function(grp, dat, watches, grid){
     dat.filt <- filter(dat, Alpha %in% spec.grps[[grp]])
 
   # Do year round
-  yr <- list(agg.by.grid(dat.filt, grp, watches, grid, "year_round")) %>%
+  yr <- list(agg_by_grid(dat.filt, grp, watches, grid, idgrid, "year_round")) %>%
     setNames("year_round")
 
   # Now do seasonally
   seas <- watches %>%
     split(.$Season) %>%
     map(\(seas.watches) {
-      agg.by.grid(dat.filt,
+      agg_by_grid(dat.filt,
                   grp,
                   seas.watches,
                   grid,
+                  idgrid,
                   unique(seas.watches$Season))
     })
 
@@ -2831,6 +2872,10 @@ do.kde <- function(dat,
 # dat is a list of species where each species element is a list of seasons
 # and each season is a dataframe for that species-season combo.
 combine_species <- function(dat) {
+  # Prevent message from printing on next line before dat has been created
+  # by a function earlier in a pipe.
+  force(dat)
+
   message("Combining species")
   # Check that all lists have the same names for the elements
   if (any(sapply(dat, function(x) !all(names(x) == names(dat[[1]]))))) {

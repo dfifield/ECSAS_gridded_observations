@@ -1,5 +1,5 @@
 ---
-title: "Create 1x1 km grid"
+title: "Create grid"
 author: "Dave Fifield, Allison Patterson"
 date: "`r Sys.Date()`"
 output: html_document
@@ -13,34 +13,121 @@ the.data <- readRDS(the.data.file)
 study.area <- readRDS(study.area.file)
 ```
 
-# Create projection and save
+# Create grid for Atl_OPP
+Create grid of 1 km x 1 km to fit inside the 5 km x 5 km one in use by CWS Atl contained in study_area.
 
-Create an Albers Equal Area projection with params customized to the locations
-of the data and save it.
+```{r eval=(SubProject == "Atl_OPP")}
+coast <- rnaturalearth::ne_countries(scale = "medium", returnclass = 'sf')
 
-```{r pick_proj}
-proj <- dftools::pick_aea_projection(the.data, 
-                                     latcol = "LatStart",
-                                     longcol = "LongStart")
+# Projection is predefined by the study area given to us.
+proj <- st_crs(study.area)$wkt
 write_rds(proj, file = proj.file)
+
+# Create the 1x1 km grid
+grid_1km_tagged <- study.area %>% 
+  # Create union for extent
+  st_union() %>%
+  # Build 1 km grid aligned to 5 km grid
+  st_make_grid(
+    cellsize = c(1000, 1000),
+    what = "polygons",
+    square = TRUE
+  ) %>%
+  # convert to sf object
+  st_sf(crs = st_crs(study.area)) %>%
+  # Tag 1 km cells with 5 km ET_ID
+  st_join(study.area["ET_ID"], join = st_within) %>%
+  # Remove any that were outside the extent of original 5km grid
+  # since there will be one extra column in the east.
+  filter(!is.na(ET_ID)) %>%
+  # Add unique ID
+  mutate(ID = 1:nrow(.))
+
+# Write to file
+st_write(grid_1km_tagged,
+  dsn = ShapeDir,
+  layer = "GRID_1km",
+  driver = "ESRI Shapefile",
+  delete_layer = TRUE
+)
+
+# Convert sf to SpatVector
+grid_vect <- vect(grid_1km_tagged)
+
+# Create an empty raster template 
+r <- rast(grid_vect, res = 1000, crs = proj)
+
+# Rasterize: fill with an attribute column telling which 5x5 km grid cell it 
+# came from.
+gengrid <- rasterize(grid_vect, r, field = "ET_ID")
+
+# Save as a raster
+writeRaster(gengrid,
+            filename = file.path(RasterDir, "grid.tif"),
+            overwrite = TRUE)
+
+# Now rasterize again filling with the 1x1 km grid id since we'll want
+# that as well
+idgrid <- rasterize(grid_vect, r, field = "ID")
+
+# Save as a raster
+writeRaster(idgrid,
+            filename = file.path(RasterDir, "idgrid.tif"),
+            overwrite = TRUE)
+
+plot(gengrid, main = "Study area")
+
+# old code
+if (FALSE) {
+  # generate raster covering the study area
+  gengrid <- studyarea.proj %>% 
+  rast(resolution = 5000, crs = proj) %>% # create raster
+  rasterize(studyarea.proj, ., field = 1, background = NA) # set cells to 1
+
+  # Remove the portion of the study area that is land
+  land.remove <- mask(gengrid, vect(coast %>% st_transform(st_crs(proj))))
+  
+  # Raster with 1's where we want to remove
+  land.remove.ones <- ifel(is.na(land.remove), 0, 1)
+  
+  # Subtract - now the areas we want to remove are zeros
+  land.remove.zeros <- gengrid - land.remove.ones
+  
+  # Turn the zeros into NA's
+  gengrid <- ifel(land.remove.zeros == 0, NA, 1)
+  
+  # Save as a raster
+  writeRaster(gengrid,
+              filename = file.path(RasterDir, "grid.tif"),
+              overwrite = TRUE)
+  
+  plot(gengrid, main = "Study area")
+}
 ```
 
 
-# Create grid
+# Create grid for all CWS
 
 Create 1x1 km grid covering the study area and fill the cells with value 1.
-```{r create_grid}
+```{r create_grid, eval=(SubProject == "All_ECSAS")}
+
+# Create an Albers Equal Area projection with params customized to the locations
+# of the data and save it.
+
+# We use the data to figure out a good projection
+proj <- dftools::pick_aea_projection(the.data$distdata, 
+                                     latcol = "LatStart",
+                                     longcol = "LongStart")
+write_rds(proj, file = proj.file)
+
 # Study.area is in WGS84
 studyarea.proj <- st_transform(study.area, proj)
 coast <- rnaturalearth::ne_countries(scale = "medium", returnclass = 'sf')
 
 # generate raster covering the study area
 gengrid <- studyarea.proj %>%
-  ext %>% 
   rast(resolution = 1000, crs = proj) %>%  # create rectangular raster
-  setValues(rep(NA, length(.))) %>%            # set all cells to NA
   rasterize(studyarea.proj, ., field = 1, background = NA) # set cells to 1
-  # writeRaster(filename = file.path(RasterDir, "grid.tif"), overwrite = TRUE)
 
 # Remove the portion of the study area that is land
 land.remove <- mask(gengrid, vect(coast %>% st_transform(proj)))
