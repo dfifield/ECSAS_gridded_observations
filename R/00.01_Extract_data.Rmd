@@ -165,7 +165,7 @@ ecsas.air.dat.on.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial on-
     FlySwim %in% c("W", "F"),
     !is.na(AerialObsID),
     DataSharing == 1
-  )  %>%
+  ) %>%
   select(
     AerialObsID,
     AerialTransectID,
@@ -233,8 +233,9 @@ if (any(is.na(ecsas.air.dat.on.effort$WatchID))) {
     arrange(WatchID, ObsTime)
 }
 
-# No longer needed
-ecsas.air.dat.on.effort <- select(ecsas.air.dat.on.effort, -ObsTime)
+# filter out any with missing date or location
+ecsas.air.dat.on.effort <- select(ecsas.air.dat.on.effort, -ObsTime) %>% 
+  filter(!is.na(LatStart), !is.na(LongStart), !is.na(Date))
 
 # 6579 rows 
 summary(ecsas.air.dat.on.effort)
@@ -242,6 +243,11 @@ dftools:::namesort(ecsas.air.dat.on.effort)
 ```
 
 ## Process ECSAS aerial off-effort data
+
+Left in for posterity but doesn't actually get used since I aggregate by watchID
+and these don't actually have watchIDs (although I assign fake ones). However, I am
+(currently) using watchIDs gleaned from ECSAS_aerial_watches.rda from Atlantic DSM
+analysis.
 
 ```{r ecsas_air_off_effort}
 ecsas.air.dat.off.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial off-effort data.xlsx")) %>%
@@ -280,7 +286,8 @@ ecsas.air.dat.off.effort <- readxl::read_xlsx(file.path(RawDataDir, "q Aerial of
   ) %>% 
   rename(LatStart = ObsLat,
          LongStart = ObsLong,
-         Date = ObsTime)
+         Date = ObsTime) %>% 
+  filter(!is.na(LatStart), !is.na(LongStart), !is.na(Date))
 
 # 153 obs
 
@@ -289,6 +296,7 @@ dftools:::namesort(ecsas.air.dat.off.effort)
 ```
 
 ## Combine aerial on- and off-effort data
+
 
 ```{r combine_ecsas_aerial}
 ecsas.air.distdata <- rbind(ecsas.air.dat.on.effort, ecsas.air.dat.off.effort) %>%
@@ -336,6 +344,7 @@ the.data <- list(
   distdata = rbind(ecsas.ship.the.data$distdata, ecsas.air.the.data$distdata),
   watches = rbind(ecsas.ship.the.data$watches, ecsas.air.the.data$watches)
 )
+
 
 write_rds(the.data, file = the.data.file)
 # load(the.data.file)
