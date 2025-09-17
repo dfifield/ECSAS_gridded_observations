@@ -14,7 +14,7 @@ study.area <- readRDS(study.area.file)
 ```
 
 # Create grid for Atl_OPP
-Create grid of 1 km x 1 km to fit inside the 5 km x 5 km one in use by CWS Atl 
+Create grid of 1 km x 1 km to fit inside the 5 km x 5 km one in use by CWS Atl contained in study_area.
 
 ```{r eval=(SubProject == "Atl_OPP")}
 coast <- rnaturalearth::ne_countries(scale = "medium", returnclass = 'sf')
@@ -23,7 +23,7 @@ coast <- rnaturalearth::ne_countries(scale = "medium", returnclass = 'sf')
 proj <- st_crs(study.area)$wkt
 write_rds(proj, file = proj.file)
 
-
+# Create the 1x1 km grid
 grid_1km_tagged <- study.area %>% 
   # Create union for extent
   st_union() %>%
@@ -46,7 +46,7 @@ grid_1km_tagged <- study.area %>%
 # Write to file
 st_write(grid_1km_tagged,
   dsn = ShapeDir,
-  layer = "grid_1km_with_ETID.shp",
+  layer = "GRID_1km",
   driver = "ESRI Shapefile",
   delete_layer = TRUE
 )
@@ -57,12 +57,22 @@ grid_vect <- vect(grid_1km_tagged)
 # Create an empty raster template 
 r <- rast(grid_vect, res = 1000, crs = proj)
 
-# Rasterize: fill with an attribute column, e.g. AREA
-gengrid <- rasterize(grid_vect, r, field = "ID")
+# Rasterize: fill with an attribute column telling which 5x5 km grid cell it 
+# came from.
+gengrid <- rasterize(grid_vect, r, field = "ET_ID")
 
 # Save as a raster
 writeRaster(gengrid,
             filename = file.path(RasterDir, "grid.tif"),
+            overwrite = TRUE)
+
+# Now rasterize again filling with the 1x1 km grid id since we'll want
+# that as well
+idgrid <- rasterize(grid_vect, r, field = "ID")
+
+# Save as a raster
+writeRaster(idgrid,
+            filename = file.path(RasterDir, "idgrid.tif"),
             overwrite = TRUE)
 
 plot(gengrid, main = "Study area")

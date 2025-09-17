@@ -962,17 +962,6 @@
       ],
       "Hash": "5899f1eaa825580172bb56c08266f37c"
     },
-    "gmp": {
-      "Package": "gmp",
-      "Version": "0.7-5",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Requirements": [
-        "R",
-        "methods"
-      ],
-      "Hash": "47b774de7ee40f6134cfdeab3fc85df9"
-    },
     "googledrive": {
       "Package": "googledrive",
       "Version": "2.1.1",
@@ -1752,17 +1741,6 @@
         "R"
       ],
       "Hash": "6b01fc98b1e86c4f705ce9dcfd2f57c7"
-    },
-    "primes": {
-      "Package": "primes",
-      "Version": "1.6.1",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Requirements": [
-        "R",
-        "Rcpp"
-      ],
-      "Hash": "e3d61269ae150747de2e380b4ad00c3e"
     },
     "processx": {
       "Package": "processx",
